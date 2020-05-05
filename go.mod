@@ -1,4 +1,4 @@
-module eth-poller
+module github.com/IRT-SystemX/eth-poller
 
 go 1.14
 

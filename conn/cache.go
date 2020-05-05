@@ -6,7 +6,7 @@ import (
     "context"
     "github.com/ethereum/go-ethereum/common"
     "github.com/ethereum/go-ethereum/ethclient"
-    ingest "eth-poller/poller/ingest"
+    ingest "github.com/IRT-SystemX/eth-poller/ingest"
 )
 
 type Stats struct {

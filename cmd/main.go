@@ -4,10 +4,10 @@ import (
 	"log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-    ingest "eth-poller/poller/ingest"
-    probe "eth-poller/poller/probe"
-    conn "eth-poller/poller/conn"
-    utils "eth-poller/poller/utils"
+    ingest "github.com/IRT-SystemX/eth-poller/ingest"
+    probe "github.com/IRT-SystemX/eth-poller/probe"
+    conn "github.com/IRT-SystemX/eth-poller/conn"
+    utils "github.com/IRT-SystemX/eth-poller/utils"
 )
 
 var (
