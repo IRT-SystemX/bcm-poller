@@ -5,7 +5,6 @@ import (
     "os"
     "time"
     "math"
-    "strconv"
     "errors"
     "path/filepath"
 )
@@ -17,7 +16,7 @@ type DiskUsage struct {
     Available uint64 `json:"available"`
     Size uint64 `json:"size"`
     Used uint64 `json:"used"`
-    Usage string `json:"usage"`
+    Usage uint64 `json:"usage"`
     Dir uint64 `json:"dir"`
     path string
     refresh uint64
@@ -38,7 +37,7 @@ func (usage *DiskUsage) Update() {
 	usage.Available = (stat.Bavail * uint64(stat.Bsize)) /KB
 	usage.Size = (stat.Blocks * uint64(stat.Bsize)) /KB
 	usage.Used = usage.Size - usage.Free
-	usage.Usage = percent(float64(usage.Used), float64(usage.Size))
+	usage.Usage = uint64(math.Abs(float64(usage.Used) * 100 / float64(usage.Size)))
 	usage.Dir = dirSize(usage.path)
 }
 
@@ -60,8 +59,4 @@ func dirSize(path string) uint64 {
         return nil
     })
     return uint64(dirSize) /KB
-}
-
-func percent(val float64, limit float64) string {
-    return strconv.FormatInt(int64(math.Abs(val * 100 / limit)), 10)+"%%"
 }

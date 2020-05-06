@@ -6,17 +6,15 @@ import (
     "math"
     "math/big"
     "context"
-    "errors"
-    "container/list"
     "reflect"
     "strconv"
+    "sync"
     "github.com/ethereum/go-ethereum/core/types"
     "github.com/ethereum/go-ethereum/ethclient"
     "github.com/ethereum/go-ethereum/common/hexutil"
 )
 
 var (
-    backupSize = 5
     retry = time.Duration(5)
     zero = big.NewInt(0)
     one = big.NewInt(1)
@@ -26,14 +24,26 @@ var (
 type Engine struct {
     url string
     client *ethclient.Client
+    signer types.EIP155Signer
+    start *big.Int
+    end *big.Int
+    syncThreadPool int
+    syncThreadSize int
+    synced int64
     status map[string]interface{}
-    chainSigner types.EIP155Signer
-    chain *list.List
+    queue chan *BlockEvent 
     connector Connector
+    fork *ForkWatcher
 }
 
-func NewEngine(web3Socket string) *Engine {
-    return &Engine{url: web3Socket, chain: list.New(),
+func NewEngine(web3Socket string, syncThreadPool int, syncThreadSize int, maxForkSize int) *Engine {
+    return &Engine{url: web3Socket, 
+        start: big.NewInt(0),
+        end: big.NewInt(-1),
+        syncThreadPool: syncThreadPool,
+        syncThreadSize: syncThreadSize,
+        queue: make(chan *BlockEvent),
+        fork: NewForkWatcher(maxForkSize),
         status: map[string]interface{}{
             "connected": false,
             "sync": "0%%",
@@ -58,8 +68,12 @@ func (engine *Engine) Latest() *big.Int {
     return header.Number
 }
 
-func (engine *Engine) SetCurrent(val *big.Int) {
-    engine.status["current"] = val
+func (engine *Engine) SetStart(val string) {
+    engine.start, _ = new(big.Int).SetString(val, 10)
+}
+
+func (engine *Engine) SetEnd(val string) {
+    engine.end, _ = new(big.Int).SetString(val, 10)
 }
 
 func (engine *Engine) SetConnector(connector Connector) {
@@ -70,7 +84,6 @@ func (engine *Engine) Connect() *ethclient.Client {
 	for {
         client, err := ethclient.Dial(engine.url)
 		if err != nil {
-			//log.Println(err)
 			time.Sleep(retry * time.Second)
 		} else {
 			engine.client = client
@@ -79,22 +92,22 @@ func (engine *Engine) Connect() *ethclient.Client {
             if err != nil {
                 log.Fatal(err)
             }
-            engine.chainSigner = types.NewEIP155Signer(chainID)
+            engine.signer = types.NewEIP155Signer(chainID)
+            go func() {
+                for {
+                    select {
+                    case blockEvent := <-engine.queue:
+                        if engine.connector != nil && !reflect.ValueOf(engine.connector).IsNil() {
+                            engine.connector.Apply(blockEvent)
+                        }
+                        engine.status["current"] = blockEvent.Number.String()
+                    }
+                }
+		    }()
 			break
 		}
 	}
 	return engine.client
-}
-	
-func (engine *Engine) Start() error {
-    if !engine.status["connected"].(bool) {
-        return errors.New("Poller connection error with "+engine.url)
-    }
-    go func() {
-		engine.init()
-		engine.listen()
-	}()
-	return nil
 }
 
 func (engine *Engine) process(number *big.Int) *BlockEvent {
@@ -124,13 +137,13 @@ func (engine *Engine) process(number *big.Int) *BlockEvent {
         if tx.To() != nil {
             txEvent.Receiver = tx.To().Hex()
         }
-        msg, err := tx.AsMessage(engine.chainSigner); 
+        msg, err := tx.AsMessage(engine.signer); 
         if err != nil {
             log.Fatal(err)
         }
         txEvent.Sender = msg.From().Hex()
         data := msg.Data()
-        if data != nil && len(data) > 0 {
+        if data != nil && len(data) > 4 {
             txEvent.FunctionId = string(hexutil.Encode(data[:4]))
         }
         receipt, err := engine.client.TransactionReceipt(context.Background(), tx.Hash())
@@ -144,28 +157,63 @@ func (engine *Engine) process(number *big.Int) *BlockEvent {
             }
         }
     }
+    engine.queue <- blockEvent
     return blockEvent
 }
 
-func (engine *Engine) init() {
+func (engine *Engine) sync() {
+    if engine.end.Cmp(zero) == 0 {
+        engine.synced = 100
+        engine.status["sync"] = strconv.FormatInt(engine.synced, 10)+"%%"
+        log.Printf("Synced %d", engine.synced)
+    }
+    size := new(big.Int).Sub(engine.end, engine.start)
+    if size.Cmp(zero) > 0 {
+        blockRange := big.NewInt(int64(engine.syncThreadPool*engine.syncThreadSize))
+        iterMax := new(big.Int).Div(size, blockRange)
+        for iter := big.NewInt(0); iter.Cmp(iterMax) < 0 || iter.Cmp(iterMax) == 0; iter.Add(iter, one) {
+            begin := new(big.Int).Add(engine.start, new(big.Int).Mul(iter, blockRange))
+            var wg sync.WaitGroup
+            for k := 0; k < engine.syncThreadPool; k++ {
+                threadBegin := new(big.Int).Add(begin, big.NewInt(int64(k*engine.syncThreadSize)))
+                if threadBegin.Cmp(engine.end) <= 0 {
+                    wg.Add(1)
+                    go func(threadBegin *big.Int) {
+                        defer wg.Done()
+                        for j := 0; j < engine.syncThreadSize; j++ {
+                            i := new(big.Int).Add(threadBegin, big.NewInt(int64(j)))
+                            if i.Cmp(engine.end) > 0 {
+                                break
+                            }
+                            engine.process(i)
+                        }
+                    }(threadBegin)
+                }
+            }
+            wg.Wait()
+            engine.synced = new(big.Int).Div(new(big.Int).Mul(new(big.Int).Add(begin, blockRange), hundred), engine.end).Int64()
+            if engine.synced > 100 {
+                engine.synced = 100
+            }
+            engine.status["sync"] = strconv.FormatInt(engine.synced, 10)+"%%"
+            log.Printf("Synced %d%%", engine.synced)
+        }
+    }
+}
+
+func (engine *Engine) Init() {
     header, err := engine.client.HeaderByNumber(context.Background(), nil)
     if err != nil {
         log.Fatal(err)
     }
-    log.Printf("Syncing to block #%s", header.Number.String())
-    for i := new(big.Int).Set(engine.status["current"].(*big.Int)); i.Cmp(header.Number) < 0 || i.Cmp(header.Number) == 0; i.Add(i, one) {
-        blockEvent := engine.process(i)
-        if zero.Cmp(header.Number) != 0 {
-            engine.status["sync"] = strconv.FormatInt(new(big.Int).Div(new(big.Int).Mul(i, hundred), header.Number).Int64(), 10)+"%%"
-        } else {
-            engine.status["sync"] = "100%%"
-        }
-        engine.apply(blockEvent)
+    if engine.end.Cmp(zero) <= 0 {
+        engine.end = header.Number
     }
-    //log.Printf("Synced %s", engine.status["sync"])
+    log.Printf("Syncing to block #%s", engine.end.String())
+    engine.sync()
 }
 
-func (engine *Engine) listen() {
+func (engine *Engine) Listen() {
     headers := make(chan *types.Header)
     sub, err := engine.client.SubscribeNewHead(context.Background(), headers)
     if err != nil {
@@ -179,19 +227,8 @@ func (engine *Engine) listen() {
             //log.Printf("New block #%s", header.Number.String())
             if header != nil {
                 blockEvent := engine.process(header.Number)
-                engine.apply(blockEvent)
+                engine.fork.apply(blockEvent)
             }
         }
     }
-}
-
-func (engine *Engine) apply(blockEvent *BlockEvent) {
-    if engine.connector != nil && !reflect.ValueOf(engine.connector).IsNil() {
-        engine.connector.Apply(blockEvent)
-    }
-    if engine.chain.Len() >= backupSize {
-        engine.chain.Remove(engine.chain.Front())
-    }
-    engine.chain.PushBack(blockEvent)
-    engine.status["current"] = blockEvent.Number.String()
 }

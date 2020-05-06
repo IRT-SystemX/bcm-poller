@@ -2,6 +2,7 @@ package conn
 
 import (
     "log"
+    "os"
     "math/big"
     "context"
     "github.com/ethereum/go-ethereum/common"
@@ -9,20 +10,31 @@ import (
     ingest "github.com/IRT-SystemX/eth-poller/ingest"
 )
 
+var (
+    zero = big.NewInt(0)
+    one = big.NewInt(1)
+)
+
 type Stats struct {
-    Count int64 `json:"count"`
+    Current *big.Int `json:"-"`
+    Count string `json:"count"`
     Interval uint64 `json:"interval"`
     Timestamp uint64 `json:"timestamp"`
     BlockNumber string `json:"block"`
 }
 
-func (stats *Stats) increment(blockEvent *ingest.BlockEvent) {
-    stats.update(1, blockEvent.Timestamp, blockEvent.Number.String())
+func NewStats() *Stats {
+    return &Stats{Current: big.NewInt(0), Count: "0"}
 }
 
-func (stats *Stats) update(count int, timestamp uint64, number string) {
-    stats.Count += int64(count)
-    if stats.Timestamp != 0 {
+func (stats *Stats) increment(blockEvent *ingest.BlockEvent) {
+    stats.update(one, blockEvent.Timestamp, blockEvent.Number.String())
+}
+
+func (stats *Stats) update(incr *big.Int, timestamp uint64, number string) {
+    stats.Current = new(big.Int).Add(stats.Current, incr)
+    stats.Count = stats.Current.String()
+    if stats.Timestamp != 0 &&  timestamp - stats.Timestamp > 0 {
         stats.Interval = timestamp - stats.Timestamp
     }
     stats.Timestamp = timestamp
@@ -35,10 +47,24 @@ type Event struct {
     Label string `json:"label"`
 }
 
+func NewEvent(key string, rules []*Rule) *Event {
+    event := &Event{rules: rules, Label: key}
+    event.Current = big.NewInt(0)
+    event.Count = "0"
+    return event
+}
+
 type Miner struct {
     Stats
     Id string `json:"id"`
     Label string `json:"label"`
+}
+
+func NewMiner(key string, id string) *Miner {
+    miner := &Miner{Id: id, Label: key}
+    miner.Current = big.NewInt(0)
+    miner.Count = "0"
+    return miner
 }
 
 type Balance struct {
@@ -55,18 +81,36 @@ type Tracking struct {
 
 type Cache struct {
     client *ethclient.Client
+    ready bool
+    backupFile string
+    backupFrequency *big.Int
     Stats map[string]*Stats
     Tracking *Tracking
 }
 
-func NewCache(client *ethclient.Client, configFile string) *Cache {
-    return &Cache{
+func NewCache(client *ethclient.Client, configFile string, backupFile string, restore bool, backupFrequency int64) *Cache {
+    cache := &Cache{
         client: client,
-        Stats: map[string]*Stats{"block": &Stats{}, "transaction": &Stats{}, "fork": &Stats{}},
+        backupFile: backupFile,
+        backupFrequency: big.NewInt(backupFrequency),
+        Stats: map[string]*Stats{"block": NewStats(), "transaction": NewStats(), "fork": NewStats()},
         Tracking: parseConfig(configFile),
     }
+    _, err := os.Stat(backupFile)
+    if restore && err != nil {
+        log.Fatal(err)
+    }
+	if !restore && err == nil {
+	    os.Remove(backupFile)
+	}
+    loadBackup(backupFile, cache.Stats, cache.Tracking)
+    return cache
 }
-             
+
+func (cache *Cache) SetReady() {
+    cache.ready = true
+}
+
 func (rule *Rule) check(tx *ingest.TxEvent) bool {
     switch rule.field {
     case FROM:
@@ -94,7 +138,7 @@ func (rule *Rule) check(tx *ingest.TxEvent) bool {
 func (cache *Cache) Apply(blockEvent *ingest.BlockEvent) {
     cache.Stats["block"].increment(blockEvent)
     if len(blockEvent.Transactions) > 0 {
-        cache.Stats["transaction"].update(len(blockEvent.Transactions), blockEvent.Timestamp, blockEvent.Number.String())
+        cache.Stats["transaction"].update(big.NewInt(int64(len(blockEvent.Transactions))), blockEvent.Timestamp, blockEvent.Number.String())
         for _, tx := range blockEvent.Transactions {
             for _, event := range cache.Tracking.Events {
                 var check bool = true
@@ -118,11 +162,17 @@ func (cache *Cache) Apply(blockEvent *ingest.BlockEvent) {
             miner.increment(blockEvent)
         }
     }
-    for _, balance := range cache.Tracking.Balances {
-        res, err := cache.client.BalanceAt(context.Background(), common.HexToAddress(balance.Id), nil)
-        if err != nil {
-          log.Fatal(err)
+    if cache.ready {
+        for _, balance := range cache.Tracking.Balances {
+            res, err := cache.client.BalanceAt(context.Background(), common.HexToAddress(balance.Id), nil)
+            if err != nil {
+              log.Fatal(err)
+            }
+            balance.Balance = res.String()
         }
-        balance.Balance = res.String()
+    }
+    if len(cache.backupFile) > 0 && cache.backupFrequency.Cmp(zero) != 0 && new(big.Int).Mod(cache.Stats["block"].Current, cache.backupFrequency).Cmp(zero) == 0 {
+        storeBackup(cache.backupFile, map[string]interface{}{"stats": cache.Stats,"tracking": cache.Tracking})
     }
 }
+

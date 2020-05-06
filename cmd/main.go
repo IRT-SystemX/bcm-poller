@@ -12,26 +12,44 @@ import (
 
 var (
 	refresh uint64 = 10
+	port int = 8000
+	url string = "localhost:8546"
+	config string = "config.yml"
+	restore bool = false
+	backupPath string = "backup.json"
+	backupFrequency int = 0
+	start string = "0"
+	end string = "-1"
+    syncThreadPool int = 100
+    syncThreadSize int = 1
+	ledgerPath string = "/home"
+	maxForkSize int = 5 
 )
 
-func run(web3 string, path string, config string, port string) {
-	engine := ingest.NewEngine(web3)
-	disk, err := probe.NewDiskUsage(path, refresh)
+func run(cmd *cobra.Command, args []string) {
+	engine := ingest.NewEngine(viper.GetString("url"), viper.GetInt("syncThreadPool"), viper.GetInt("syncThreadSize"), maxForkSize)
+	disk, err := probe.NewDiskUsage(viper.GetString("ledgerPath"), refresh)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	log.Printf("Poller is connecting to "+web3)
+	log.Printf("Poller is connecting to "+viper.GetString("url"))
 	client := engine.Connect()
-	log.Printf("Poller is connected to  "+web3)
+	log.Printf("Poller is connected to  "+viper.GetString("url"))
 
-	cache := conn.NewCache(client, config)
+	cache := conn.NewCache(client, viper.GetString("config"), viper.GetString("backupPath"), viper.GetBool("restore"), int64(viper.GetInt("backup")))
+	engine.SetStart(viper.GetString("start"))
+	engine.SetEnd(viper.GetString("end"))
 	engine.SetConnector(interface{}(cache).(ingest.Connector))
 
-	engine.Start()
-    disk.Start()
+    go func() {
+		engine.Init()
+		cache.SetReady()
+	    disk.Start()
+		engine.Listen()
+	}()
 	
-	server :=  utils.NewServer(port)
+	server :=  utils.NewServer(viper.GetString("port"))
 	server.Bind(map[string]interface{}{
         "disk": disk,
         "stats": cache.Stats,
@@ -49,18 +67,30 @@ func main() {
 	var rootCmd = &cobra.Command{
 		Use:   "eth-poller",
 		Short: "Ethereum event poller with RESTful API",
-		Run: func(cmd *cobra.Command, args []string) {
-			run(viper.GetString("url"), viper.GetString("path"), viper.GetString("config"), viper.GetString("server_port"))
-		},
+		Run: run,
 	}
-	rootCmd.Flags().Int("server_port", 8000, "Port to run server on")
-	rootCmd.Flags().String("url", "localhost:8546", "Address web3")
-	rootCmd.Flags().String("config", "config.yml", "Config file")
-	rootCmd.Flags().String("path", "/home", "Path disk")
-	viper.BindPFlag("server_port", rootCmd.Flags().Lookup("server_port"))
+	rootCmd.Flags().Int("port", port, "Port to run server on")
+	rootCmd.Flags().String("url", url, "Address web3")
+	rootCmd.Flags().String("config", config, "Config file")
+	rootCmd.Flags().String("backupPath", backupPath, "Backup file path")
+	rootCmd.Flags().Int("backup", backupFrequency, "Backup frequency in number of blocks")
+	rootCmd.Flags().Int("syncThreadPool", syncThreadPool, "Nb of thread to sync")
+	rootCmd.Flags().Int("syncThreadSize", syncThreadSize, "Nb of blocks per thread per sync round")
+	rootCmd.Flags().String("start", start, "Sync start block")
+	rootCmd.Flags().String("end", end, "Sync end block")
+	rootCmd.Flags().Bool("restore", restore, "Restore backup")
+	rootCmd.Flags().String("ledgerPath", ledgerPath, "Monitored ledger path on disk")
+	viper.BindPFlag("port", rootCmd.Flags().Lookup("port"))
 	viper.BindPFlag("url", rootCmd.Flags().Lookup("url"))
 	viper.BindPFlag("config", rootCmd.Flags().Lookup("config"))
-	viper.BindPFlag("path", rootCmd.Flags().Lookup("path"))
+	viper.BindPFlag("backupPath", rootCmd.Flags().Lookup("backupPath"))
+	viper.BindPFlag("backup", rootCmd.Flags().Lookup("backup"))
+	viper.BindPFlag("syncThreadPool", rootCmd.Flags().Lookup("syncThreadPool"))
+	viper.BindPFlag("syncThreadSize", rootCmd.Flags().Lookup("syncThreadSize"))
+	viper.BindPFlag("restore", rootCmd.Flags().Lookup("restore"))
+	viper.BindPFlag("start", rootCmd.Flags().Lookup("start"))
+	viper.BindPFlag("end", rootCmd.Flags().Lookup("end"))
+	viper.BindPFlag("ledgerPath", rootCmd.Flags().Lookup("ledgerPath"))
 	if err := rootCmd.Execute(); err != nil {
 		log.Fatal(err)
 	}
