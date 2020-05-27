@@ -30,6 +30,7 @@ type Engine struct {
     syncThreadPool int
     syncThreadSize int
     synced int64
+    mux sync.Mutex
     status map[string]interface{}
     queue chan *BlockEvent 
     connector Connector
@@ -87,27 +88,35 @@ func (engine *Engine) Connect() *ethclient.Client {
 			time.Sleep(retry * time.Second)
 		} else {
 			engine.client = client
-			engine.status["connected"] = true
-			chainID, err := engine.client.NetworkID(context.Background())
-            if err != nil {
-                log.Fatal(err)
-            }
-            engine.signer = types.NewEIP155Signer(chainID)
-            go func() {
-                for {
-                    select {
-                    case blockEvent := <-engine.queue:
-                        if engine.connector != nil && !reflect.ValueOf(engine.connector).IsNil() {
-                            engine.connector.Apply(blockEvent)
-                        }
-                        engine.status["current"] = blockEvent.Number.String()
-                    }
-                }
-		    }()
 			break
 		}
 	}
+	engine.initialize()
 	return engine.client
+}
+
+func (engine *Engine) initialize() {
+    if engine.status["connected"] == false {
+    	engine.status["connected"] = true
+    	chainID, err := engine.client.NetworkID(context.Background())
+        if err != nil {
+            log.Fatal(err)
+        }
+        engine.signer = types.NewEIP155Signer(chainID)
+        go func() {
+            for {
+                select {
+                case blockEvent := <-engine.queue:
+                    if engine.connector != nil && !reflect.ValueOf(engine.connector).IsNil() {
+                        engine.connector.Apply(blockEvent)
+                    }
+                    engine.mux.Lock()
+                    engine.status["current"] = blockEvent.Number.String()
+                    engine.mux.Unlock()
+                }
+            }
+        }()
+    }
 }
 
 func (engine *Engine) process(number *big.Int) *BlockEvent {
@@ -157,11 +166,11 @@ func (engine *Engine) process(number *big.Int) *BlockEvent {
             }
         }
     }
-    engine.queue <- blockEvent
     return blockEvent
 }
 
 func (engine *Engine) sync() {
+    log.Printf("Syncing to block #%s", engine.end.String())
     if engine.end.Cmp(zero) == 0 {
         engine.synced = 100
         engine.status["sync"] = strconv.FormatInt(engine.synced, 10)+"%%"
@@ -185,7 +194,9 @@ func (engine *Engine) sync() {
                             if i.Cmp(engine.end) > 0 {
                                 break
                             }
-                            engine.process(i)
+                            blockEvent := engine.process(i)
+                            engine.queue <- blockEvent
+
                         }
                     }(threadBegin)
                 }
@@ -195,7 +206,9 @@ func (engine *Engine) sync() {
             if engine.synced > 100 {
                 engine.synced = 100
             }
+            engine.mux.Lock()
             engine.status["sync"] = strconv.FormatInt(engine.synced, 10)+"%%"
+            engine.mux.Unlock()
             log.Printf("Synced %d%%", engine.synced)
         }
     }
@@ -209,8 +222,8 @@ func (engine *Engine) Init() {
     if engine.end.Cmp(zero) <= 0 {
         engine.end = header.Number
     }
-    log.Printf("Syncing to block #%s", engine.end.String())
     engine.sync()
+    engine.end = new(big.Int).Add(header.Number, one)
 }
 
 func (engine *Engine) Listen() {
@@ -226,8 +239,12 @@ func (engine *Engine) Listen() {
         case header := <-headers:
             //log.Printf("New block #%s", header.Number.String())
             if header != nil {
-                blockEvent := engine.process(header.Number)
-                engine.fork.apply(blockEvent)
+                for i := new(big.Int).Set(engine.end); i.Cmp(header.Number) < 0 || i.Cmp(header.Number) == 0; i.Add(i, one) {
+                    blockEvent := engine.process(i)
+                    engine.queue <- blockEvent
+                    engine.fork.apply(blockEvent)
+                }
+                engine.end = new(big.Int).Add(header.Number, one)
             }
         }
     }

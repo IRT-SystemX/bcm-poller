@@ -176,3 +176,8 @@ func (cache *Cache) Apply(blockEvent *ingest.BlockEvent) {
     }
 }
 
+func (cache *Cache) Revert(blockEvent *ingest.BlockEvent) {
+    
+    
+}
+

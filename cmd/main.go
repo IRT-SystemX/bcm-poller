@@ -13,15 +13,15 @@ import (
 var (
 	refresh uint64 = 10
 	port int = 8000
-	url string = "localhost:8546"
+	url string = "ws://localhost:8546"
 	config string = "config.yml"
 	restore bool = false
 	backupPath string = "backup.json"
 	backupFrequency int = 0
 	start string = "0"
 	end string = "-1"
-    syncThreadPool int = 100
-    syncThreadSize int = 1
+    syncThreadPool int = 4
+    syncThreadSize int = 25
 	ledgerPath string = "/home"
 	maxForkSize int = 5 
 )

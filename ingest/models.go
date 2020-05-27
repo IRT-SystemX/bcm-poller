@@ -30,4 +30,5 @@ type TxEvent struct {
 
 type Connector interface {
     Apply(*BlockEvent)
+    Revert(*BlockEvent)
 }
