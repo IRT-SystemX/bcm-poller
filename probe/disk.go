@@ -1,62 +1,70 @@
 package probe
 
 import (
-    "syscall"
-    "os"
-    "time"
-    "math"
-    "errors"
-    "path/filepath"
+	"errors"
+	"log"
+	"math"
+	"os"
+	"path/filepath"
+	"syscall"
+	"time"
 )
 
 var KB = uint64(1024)
 
 type DiskUsage struct {
-    Free uint64 `json:"free"`
-    Available uint64 `json:"available"`
-    Size uint64 `json:"size"`
-    Used uint64 `json:"used"`
-    Usage uint64 `json:"usage"`
-    Dir uint64 `json:"dir"`
-    path string
-    refresh uint64
+	Free      uint64 `json:"free"`
+	Available uint64 `json:"available"`
+	Size      uint64 `json:"size"`
+	Used      uint64 `json:"used"`
+	Usage     uint64 `json:"usage"`
+	Dir       uint64 `json:"dir"`
+	path      string
+	refresh   uint64
 }
 
 func NewDiskUsage(volumePath string, refresh uint64) (*DiskUsage, error) {
-    _, err := os.Stat(volumePath)
-    if os.IsNotExist(err) {
-        return nil, errors.New("Path "+volumePath+"does not exists")
-    }
+	_, err := os.Stat(volumePath)
+	if os.IsNotExist(err) {
+		return nil, errors.New("Path " + volumePath + "does not exists")
+	}
 	return &DiskUsage{path: volumePath, refresh: refresh}, nil
 }
 
 func (usage *DiskUsage) Update() {
 	var stat syscall.Statfs_t
-	syscall.Statfs(usage.path, &stat)
-	usage.Free = (stat.Bfree * uint64(stat.Bsize)) /KB
-	usage.Available = (stat.Bavail * uint64(stat.Bsize)) /KB
-	usage.Size = (stat.Blocks * uint64(stat.Bsize)) /KB
-	usage.Used = usage.Size - usage.Free
-	usage.Usage = uint64(math.Abs(float64(usage.Used) * 100 / float64(usage.Size)))
-	usage.Dir = dirSize(usage.path)
+	err := syscall.Statfs(usage.path, &stat)
+	if err != nil {
+		log.Println("Error disk: ", err)
+	} else {
+		usage.Free = (stat.Bfree * uint64(stat.Bsize)) / KB
+		usage.Available = (stat.Bavail * uint64(stat.Bsize)) / KB
+		usage.Size = (stat.Blocks * uint64(stat.Bsize)) / KB
+		usage.Used = usage.Size - usage.Free
+		usage.Usage = uint64(math.Abs(float64(usage.Used) * 100 / float64(usage.Size)))
+		usage.Dir = dirSize(usage.path)
+	}
 }
 
 func (usage *DiskUsage) Start() {
-    go func() {
+	go func() {
 		for {
-		    usage.Update()
+			usage.Update()
 			time.Sleep(time.Duration(usage.refresh) * time.Second)
 		}
 	}()
 }
 
 func dirSize(path string) uint64 {
-    var dirSize uint64 = 0
-    filepath.Walk(path, func(path string, file os.FileInfo, err error) error {
-        if !file.IsDir() {
-            dirSize += uint64(file.Size())
-        }
-        return nil
-    })
-    return uint64(dirSize) /KB
+	var dirSize uint64 = 0
+	err := filepath.Walk(path, func(path string, file os.FileInfo, err error) error {
+		if !file.IsDir() {
+			dirSize += uint64(file.Size())
+		}
+		return nil
+	})
+	if err != nil {
+		log.Println("Error dirSize: ", err)
+	}
+	return uint64(dirSize) / KB
 }
