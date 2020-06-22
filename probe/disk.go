@@ -1,7 +1,6 @@
 package probe
 
 import (
-	"errors"
 	"log"
 	"math"
 	"os"
@@ -23,12 +22,15 @@ type DiskUsage struct {
 	refresh   uint64
 }
 
-func NewDiskUsage(volumePath string, refresh uint64) (*DiskUsage, error) {
+func NewDiskUsage(volumePath string, refresh uint64) *DiskUsage {
 	_, err := os.Stat(volumePath)
 	if os.IsNotExist(err) {
-		return nil, errors.New("Path " + volumePath + "does not exists")
+		err := os.MkdirAll(volumePath, os.ModePerm)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
-	return &DiskUsage{path: volumePath, refresh: refresh}, nil
+	return &DiskUsage{path: volumePath, refresh: refresh}
 }
 
 func (usage *DiskUsage) Update() {
@@ -59,6 +61,7 @@ func dirSize(path string) uint64 {
 	var dirSize uint64 = 0
 	err := filepath.Walk(path, func(path string, file os.FileInfo, err error) error {
 		if !file.IsDir() {
+			//log.Printf("%s: %d", file.Name(), file.Size())
 			dirSize += uint64(file.Size())
 		}
 		return nil

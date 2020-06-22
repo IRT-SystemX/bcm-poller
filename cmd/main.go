@@ -18,21 +18,18 @@ var (
 	restore         bool   = false
 	backupPath      string = "backup.json"
 	backupFrequency int    = 0
-	start           string = "-1"
+	start           string = "0"
 	end             string = "-1"
 	syncMode        string = "normal"
 	syncThreadPool  int    = 4
 	syncThreadSize  int    = 25
-	ledgerPath      string = "/home"
+	ledgerPath      string = "/chain"
 	maxForkSize     int    = 10
 )
 
 func run(cmd *cobra.Command, args []string) {
 	engine := ingest.NewEngine(viper.GetString("url"), viper.GetString("syncMode"), viper.GetInt("syncThreadPool"), viper.GetInt("syncThreadSize"), maxForkSize)
-	disk, err := probe.NewDiskUsage(viper.GetString("ledgerPath"), refresh)
-	if err != nil {
-		log.Fatal(err)
-	}
+	disk := probe.NewDiskUsage(viper.GetString("ledgerPath"), refresh)
 
 	log.Printf("Poller is connecting to " + viper.GetString("url"))
 	client := engine.Connect()
@@ -41,12 +38,16 @@ func run(cmd *cobra.Command, args []string) {
 	cache := conn.NewCache(client, viper.GetString("config"), viper.GetString("backupPath"), viper.GetBool("restore"), int64(viper.GetInt("backup")))
 	if viper.GetString("start") == "-1" {
 		if viper.GetBool("restore") {
-			engine.SetStart(cache.Stats["block"].Count)
+			engine.SetStart(cache.Stats["block"].Count, true)
 		} else {
-			engine.SetStart("0")
+			last, err := engine.Latest()
+			if err != nil {
+				log.Fatal(err)
+			}
+			engine.SetStart(last.String(), false)
 		}
 	} else {
-		engine.SetStart(viper.GetString("start"))
+		engine.SetStart(viper.GetString("start"), false)
 	}
 	engine.SetEnd(viper.GetString("end"))
 	engine.SetConnector(interface{}(cache).(ingest.Connector))

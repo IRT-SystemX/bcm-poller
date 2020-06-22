@@ -81,8 +81,13 @@ func (engine *Engine) Latest() (*big.Int, error) {
 	}
 }
 
-func (engine *Engine) SetStart(val string) {
-	engine.start, _ = new(big.Int).SetString(val, 10)
+func (engine *Engine) SetStart(val string, plusOne bool) {
+	if plusOne {
+		start, _ := new(big.Int).SetString(val, 10)
+		engine.start = new(big.Int).Add(start, one)
+	} else {
+		engine.start, _ = new(big.Int).SetString(val, 10)
+	}
 }
 
 func (engine *Engine) SetEnd(val string) {
@@ -253,7 +258,11 @@ func (engine *Engine) fastSync() {
 }
 
 func (engine *Engine) printSync(current *big.Int) {
-	engine.synced = new(big.Int).Div(new(big.Int).Mul(current, hundred), engine.end).Int64()
+	if engine.end.Cmp(zero) > 0 {
+		engine.synced = new(big.Int).Div(new(big.Int).Mul(current, hundred), engine.end).Int64()
+	} else {
+		engine.synced = 100
+	}
 	if engine.synced > 100 {
 		engine.synced = 100
 	}

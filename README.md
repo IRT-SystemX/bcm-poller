@@ -30,10 +30,14 @@ balances: # Track balance for the specified address
 ```
 
 Information are available on the exposed REST API and labeled according to the configuration:
+
 * URL: /tracking
 * URL: /stats
 * URL: /disk
 * URL: /status
+
+The API is exposed by a server that listens by default on port 8000.
+It uses Websocket interface to collect the metrics. Although, it was only tested with [Open Ethereum](https://github.com/openethereum/openethereum).
 
 ## Getting Started
 
@@ -44,7 +48,7 @@ docker build --target install -t eth-poller $PWD
 
 * Run and connect to node
 ```
-docker run -it --rm --name poller -p 8000:8000 -v $PWD:/root eth-poller --url ws://node:8546 --config /root/config.yml
+docker run -it --rm --name poller -p 8000:8000 -v $PWD:/backup eth-poller --url ws://node:8546 --config /backup/config.yml
 ```
 
 * Test api
