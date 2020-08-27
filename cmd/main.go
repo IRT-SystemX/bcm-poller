@@ -1,9 +1,9 @@
 package main
 
 import (
-	conn "github.com/IRT-SystemX/eth-poller/conn"
 	ingest "github.com/IRT-SystemX/eth-poller/ingest"
-	probe "github.com/IRT-SystemX/eth-poller/probe"
+	conn "github.com/IRT-SystemX/eth-poller/internal/conn"
+	probe "github.com/IRT-SystemX/eth-poller/internal/probe"
 	utils "github.com/IRT-SystemX/eth-poller/utils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
