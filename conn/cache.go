@@ -27,8 +27,8 @@ func NewStats() *Stats {
 	return &Stats{Current: big.NewInt(0), Count: "0"}
 }
 
-func (stats *Stats) increment(blockEvent *ingest.BlockEvent) {
-	stats.update(one, blockEvent.Timestamp, blockEvent.Number.String())
+func (stats *Stats) increment(blockEvent *BlockCacheEvent) {
+	stats.update(one, blockEvent.Timestamp, blockEvent.Number().String())
 }
 
 func (stats *Stats) decrement(incr *big.Int) {
@@ -116,7 +116,7 @@ func (cache *Cache) SetReady() {
 	cache.ready = true
 }
 
-func (rule *Rule) check(tx *ingest.TxEvent) bool {
+func (rule *Rule) check(tx *TxEvent) bool {
 	switch rule.field {
 	case FROM:
 		val := common.HexToAddress(rule.value).Hex()
@@ -140,10 +140,11 @@ func (rule *Rule) check(tx *ingest.TxEvent) bool {
 	return false
 }
 
-func (cache *Cache) Apply(blockEvent *ingest.BlockEvent) {
+func (cache *Cache) Apply(event ingest.BlockEvent) {
+	blockEvent := interface{}(event).(*BlockCacheEvent)
 	cache.Stats["block"].increment(blockEvent)
 	if len(blockEvent.Transactions) > 0 {
-		cache.Stats["transaction"].update(big.NewInt(int64(len(blockEvent.Transactions))), blockEvent.Timestamp, blockEvent.Number.String())
+		cache.Stats["transaction"].update(big.NewInt(int64(len(blockEvent.Transactions))), blockEvent.Timestamp, blockEvent.Number().String())
 		for _, tx := range blockEvent.Transactions {
 			for _, event := range cache.Tracking.Events {
 				var check bool = true
@@ -166,7 +167,7 @@ func (cache *Cache) Apply(blockEvent *ingest.BlockEvent) {
 			log.Printf("> detect miner %s", miner.Label)
 			miner.increment(blockEvent)
 		}
-		miner.CurrentBlock = blockEvent.Number.String()
+		miner.CurrentBlock = blockEvent.Number().String()
 	}
 	if cache.ready {
 		for _, balance := range cache.Tracking.Balances {
@@ -183,7 +184,8 @@ func (cache *Cache) Apply(blockEvent *ingest.BlockEvent) {
 	}
 }
 
-func (cache *Cache) Revert(blockEvent *ingest.BlockEvent) {
+func (cache *Cache) Revert(event ingest.BlockEvent) {
+	blockEvent := interface{}(event).(*BlockCacheEvent)
 	cache.Stats["block"].decrement(one)
 	if len(blockEvent.Transactions) > 0 {
 		cache.Stats["transaction"].decrement(big.NewInt(int64(len(blockEvent.Transactions))))

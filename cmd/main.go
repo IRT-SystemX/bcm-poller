@@ -36,6 +36,7 @@ func run(cmd *cobra.Command, args []string) {
 	log.Printf("Poller is connected to  " + viper.GetString("url"))
 
 	cache := conn.NewCache(client, viper.GetString("config"), viper.GetString("backupPath"), viper.GetBool("restore"), int64(viper.GetInt("backup")))
+	processor := conn.NewProcessor(client)
 	if viper.GetString("start") == "-1" {
 		if viper.GetBool("restore") {
 			engine.SetStart(cache.Stats["block"].Count, true)
@@ -51,6 +52,7 @@ func run(cmd *cobra.Command, args []string) {
 	}
 	engine.SetEnd(viper.GetString("end"))
 	engine.SetConnector(interface{}(cache).(ingest.Connector))
+	engine.SetProcessor(interface{}(processor).(ingest.Processor))
 
 	go func() {
 		engine.Init()

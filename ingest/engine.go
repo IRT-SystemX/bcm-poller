@@ -8,7 +8,6 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 	"log"
-	"math"
 	"math/big"
 	"reflect"
 	"strconv"
@@ -32,7 +31,6 @@ type Engine struct {
 	url            string
 	client         *ethclient.Client
 	rawClient      *rpc.Client
-	signer         types.EIP155Signer
 	start          *big.Int
 	end            *big.Int
 	syncMode       string
@@ -41,8 +39,9 @@ type Engine struct {
 	synced         int64
 	mux            sync.Mutex
 	status         map[string]interface{}
-	queue          chan *BlockEvent
+	queue          chan BlockEvent
 	connector      Connector
+	processor      Processor
 	fork           *ForkWatcher
 }
 
@@ -53,7 +52,7 @@ func NewEngine(web3Socket string, syncMode string, syncThreadPool int, syncThrea
 		syncMode:       syncMode,
 		syncThreadPool: syncThreadPool,
 		syncThreadSize: syncThreadSize,
-		queue:          make(chan *BlockEvent),
+		queue:          make(chan BlockEvent),
 		status: map[string]interface{}{
 			"connected": false,
 			"sync":      "0%%",
@@ -98,6 +97,10 @@ func (engine *Engine) SetConnector(connector Connector) {
 	engine.connector = connector
 }
 
+func (engine *Engine) SetProcessor(processor Processor) {
+	engine.processor = processor
+}
+
 func (engine *Engine) Connect() *ethclient.Client {
 	for {
 		rawClient, err := rpc.DialContext(context.Background(), engine.url)
@@ -116,11 +119,6 @@ func (engine *Engine) Connect() *ethclient.Client {
 func (engine *Engine) initialize() {
 	if engine.status["connected"] == false {
 		engine.status["connected"] = true
-		chainID, err := engine.client.NetworkID(context.Background())
-		if err != nil {
-			log.Fatal(err)
-		}
-		engine.signer = types.NewEIP155Signer(chainID)
 		go func() {
 			for {
 				select {
@@ -129,7 +127,7 @@ func (engine *Engine) initialize() {
 						engine.connector.Apply(blockEvent)
 					}
 					engine.mux.Lock()
-					engine.status["current"] = blockEvent.Number.String()
+					engine.status["current"] = blockEvent.Number().String()
 					engine.mux.Unlock()
 				}
 			}
@@ -137,7 +135,7 @@ func (engine *Engine) initialize() {
 	}
 }
 
-func (engine *Engine) process(number *big.Int) *BlockEvent {
+func (engine *Engine) process(number *big.Int) BlockEvent {
 	block, err := engine.client.BlockByNumber(context.Background(), number)
 	if err != nil {
 		log.Println("Error block: ", err)
@@ -149,47 +147,10 @@ func (engine *Engine) process(number *big.Int) *BlockEvent {
 		log.Println("Error block hash: ", err)
 	}
 	log.Printf("Process block #%s (%s) %s", block.Number().String(), time.Unix(int64(block.Time()), 0).Format("2006.01.02 15:04:05"), head.Hash.Hex())
-	blockEvent := &BlockEvent{
-		Size:         float64(block.Size()),
-		Gas:          float64(block.GasUsed()),
-		GasLimit:     float64(block.GasLimit()),
-		Usage:        math.Abs(float64(block.GasUsed()) * 100 / float64(block.GasLimit())),
-		Timestamp:    block.Time(),
-		Number:       block.Number(),
-		Miner:        block.Coinbase().Hex(),
-		Transactions: make([]*TxEvent, len(block.Transactions())),
-		ParentHash:   block.ParentHash().Hex(),
-		Hash:         head.Hash.Hex(), // Note: block.Hash() is incompatible with Parity
-	}
-	for i, tx := range block.Transactions() {
-		//log.Printf("Process tx %s", tx.Hash().Hex())
-		txEvent := &TxEvent{Events: make([]string, 0)}
-		blockEvent.Transactions[i] = txEvent
-		txEvent.Value = tx.Value()
-		if tx.To() != nil {
-			txEvent.Receiver = tx.To().Hex()
-		}
-		msg, err := tx.AsMessage(engine.signer)
-		if err != nil {
-			log.Println("Error msg: ", err)
-		} else {
-			txEvent.Sender = msg.From().Hex()
-			data := msg.Data()
-			if len(data) > 4 {
-				txEvent.FunctionId = string(hexutil.Encode(data[:4]))
-			}
-		}
-		receipt, err := engine.client.TransactionReceipt(context.Background(), tx.Hash())
-		if err != nil {
-			log.Println("Error receipt: ", err)
-		} else {
-			txEvent.Deploy = receipt.ContractAddress.Hex()
-			for _, vLog := range receipt.Logs {
-				for i := range vLog.Topics {
-					txEvent.Events = append(txEvent.Events, vLog.Topics[i].Hex())
-				}
-			}
-		}
+	blockEvent := engine.processor.NewBlockEvent(block.Number(), block.ParentHash().Hex(), head.Hash.Hex())
+	blockEvent.SetFork(false)
+	if engine.processor != nil && !reflect.ValueOf(engine.processor).IsNil() {
+		engine.processor.Process(block, blockEvent)
 	}
 	return blockEvent
 }

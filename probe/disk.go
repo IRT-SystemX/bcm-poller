@@ -60,9 +60,11 @@ func (usage *DiskUsage) Start() {
 func dirSize(path string) uint64 {
 	var dirSize uint64 = 0
 	err := filepath.Walk(path, func(path string, file os.FileInfo, err error) error {
-		if !file.IsDir() {
-			//log.Printf("%s: %d", file.Name(), file.Size())
-			dirSize += uint64(file.Size())
+		if err == nil {
+			if !file.IsDir() {
+				//log.Printf("%s: %d", file.Name(), file.Size())
+				dirSize += uint64(file.Size())
+			}
 		}
 		return nil
 	})
