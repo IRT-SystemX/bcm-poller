@@ -75,7 +75,8 @@ func (processor *Processor) NewBlockEvent(number *big.Int, parentHash string, ha
 	return interface{}(blockEvent).(ingest.BlockEvent)
 }
 
-func (processor *Processor) Process(block *types.Block, event ingest.BlockEvent) {
+func (processor *Processor) Process(obj interface{}, event ingest.BlockEvent) {
+	block := obj.(*types.Block)
 	blockEvent := interface{}(event).(*BlockCacheEvent)
 	blockEvent.Size = float64(block.Size())
 	blockEvent.Gas = float64(block.GasUsed())

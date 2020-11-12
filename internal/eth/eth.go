@@ -37,12 +37,13 @@ type EthEngine struct {
 	fork           *ForkWatcher
 }
 
-func NewEthEngine(web3Socket string, syncMode string, syncThreadPool int, syncThreadSize int, maxForkSize int) *EthEngine {
+func NewEthEngine(web3Socket string, syncMode string, syncThreadPool int, syncThreadSize int, maxForkSize int) *ingest.Engine {
 	engine := &EthEngine{
 		Engine: ingest.NewEngine(syncMode, syncThreadPool, syncThreadSize, maxForkSize),
 		url: web3Socket,
 	}
-	return engine
+	engine.Engine.RawEngine = engine
+	return engine.Engine
 }
 
 func (engine *EthEngine) Client() *ethclient.Client {

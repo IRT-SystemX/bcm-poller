@@ -14,6 +14,7 @@ import (
 var (
 	refresh         uint64 = 10
 	port            int    = 8000
+	mode            string = "eth"
 	url             string = "ws://localhost:8546"
 	config          string = "config.yml"
 	restore         bool   = false
@@ -29,13 +30,15 @@ var (
 )
 
 func run(cmd *cobra.Command, args []string) {
-	engine := eth.NewEthEngine(viper.GetString("url"), viper.GetString("syncMode"), viper.GetInt("syncThreadPool"), viper.GetInt("syncThreadSize"), maxForkSize)
-	disk := probe.NewDiskUsage(viper.GetString("ledgerPath"), refresh)
+	var engine *ingest.Engine
+	if viper.GetString("mode") == "eth" {
+		engine = eth.NewEthEngine(viper.GetString("url"), viper.GetString("syncMode"), viper.GetInt("syncThreadPool"), viper.GetInt("syncThreadSize"), maxForkSize)
+	}
 
 	log.Printf("Poller is connecting to " + viper.GetString("url"))
-	client := engine.Connect()
+	client := interface{}(engine.RawEngine).(*eth.EthEngine).Connect()
 	log.Printf("Poller is connected to  " + viper.GetString("url"))
-
+	
 	cache := conn.NewCache(client, viper.GetString("config"), viper.GetString("backupPath"), viper.GetBool("restore"), int64(viper.GetInt("backup")))
 	processor := conn.NewProcessor(client)
 	if viper.GetString("start") == "-1" {
@@ -54,6 +57,8 @@ func run(cmd *cobra.Command, args []string) {
 	engine.SetEnd(viper.GetString("end"))
 	engine.SetConnector(interface{}(cache).(ingest.Connector))
 	engine.SetProcessor(interface{}(processor).(ingest.Processor))
+
+	disk := probe.NewDiskUsage(viper.GetString("ledgerPath"), refresh)
 
 	go func() {
 		engine.Init()
@@ -82,6 +87,7 @@ func main() {
 		Short: "Event poller with RESTful API",
 		Run:   run,
 	}
+	rootCmd.Flags().String("mode", mode, "Poller mode (eth/hlf)")
 	rootCmd.Flags().Int("port", port, "Port to run server on")
 	rootCmd.Flags().String("url", url, "Address web3")
 	rootCmd.Flags().String("config", config, "Config file")
@@ -94,6 +100,7 @@ func main() {
 	rootCmd.Flags().String("end", end, "Sync end block")
 	rootCmd.Flags().Bool("restore", restore, "Restore backup")
 	rootCmd.Flags().String("ledgerPath", ledgerPath, "Monitored ledger path on disk")
+	viper.BindPFlag("mode", rootCmd.Flags().Lookup("mode"))
 	viper.BindPFlag("port", rootCmd.Flags().Lookup("port"))
 	viper.BindPFlag("url", rootCmd.Flags().Lookup("url"))
 	viper.BindPFlag("config", rootCmd.Flags().Lookup("config"))

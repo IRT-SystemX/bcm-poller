@@ -2,7 +2,6 @@ package conn
 
 import (
 	"context"
-	ingest "github.com/IRT-SystemX/bcm-poller/ingest"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"log"
@@ -140,7 +139,7 @@ func (rule *Rule) check(tx *TxEvent) bool {
 	return false
 }
 
-func (cache *Cache) Apply(event ingest.BlockEvent) {
+func (cache *Cache) Apply(event interface{}) {
 	blockEvent := interface{}(event).(*BlockCacheEvent)
 	cache.Stats["block"].increment(blockEvent)
 	if len(blockEvent.Transactions) > 0 {
@@ -184,7 +183,7 @@ func (cache *Cache) Apply(event ingest.BlockEvent) {
 	}
 }
 
-func (cache *Cache) Revert(event ingest.BlockEvent) {
+func (cache *Cache) Revert(event interface{}) {
 	blockEvent := interface{}(event).(*BlockCacheEvent)
 	cache.Stats["block"].decrement(one)
 	if len(blockEvent.Transactions) > 0 {
