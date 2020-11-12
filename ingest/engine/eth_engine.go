@@ -1,4 +1,4 @@
-package eth
+package engine
 
 import (
 	"context"
@@ -22,32 +22,20 @@ type rpcBlockHash struct {
 	Hash common.Hash `json:"hash"`
 }
 
-type EthBlockEvent interface {
-	Number() *big.Int
-	ParentHash() string
-	Hash() string
-	SetFork(bool)
-}
-
 type EthEngine struct {
 	*ingest.Engine
 	url            string
 	client         *ethclient.Client
 	rawClient      *rpc.Client
-	fork           *ForkWatcher
 }
 
-func NewEthEngine(web3Socket string, syncMode string, syncThreadPool int, syncThreadSize int, maxForkSize int) *ingest.Engine {
+func NewEthEngine(web3Socket string, syncMode string, syncThreadPool int, syncThreadSize int) *ingest.Engine {
 	engine := &EthEngine{
-		Engine: ingest.NewEngine(syncMode, syncThreadPool, syncThreadSize, maxForkSize),
+		Engine: ingest.NewEngine(syncMode, syncThreadPool, syncThreadSize),
 		url: web3Socket,
 	}
 	engine.Engine.RawEngine = engine
 	return engine.Engine
-}
-
-func (engine *EthEngine) Client() *ethclient.Client {
-	return engine.client
 }
 
 func (engine *EthEngine) Connect() *ethclient.Client {
@@ -61,7 +49,6 @@ func (engine *EthEngine) Connect() *ethclient.Client {
 			break
 		}
 	}
-	engine.Initialize()
 	return engine.client
 }
 
@@ -87,16 +74,10 @@ func (engine *EthEngine) Process(number *big.Int, listening bool) ingest.BlockEv
 	}
 	log.Printf("Process block #%s (%s) %s", block.Number().String(), time.Unix(int64(block.Time()), 0).Format("2006.01.02 15:04:05"), head.Hash.Hex())
 	event := engine.Processor.NewBlockEvent(block.Number(), block.ParentHash().Hex(), head.Hash.Hex())
-	blockEvent := event.(EthBlockEvent)
-	blockEvent.SetFork(false)
 	if engine.Processor != nil && !reflect.ValueOf(engine.Processor).IsNil() {
-		engine.Processor.Process(block, blockEvent)
+		engine.Processor.Process(block, event, listening)
 	}
-	if listening {
-		engine.fork.checkFork(blockEvent)
-		engine.fork.apply(blockEvent)
-	}
-	return blockEvent.(ingest.BlockEvent)
+	return event
 }
 
 func (engine *EthEngine) Listen() {

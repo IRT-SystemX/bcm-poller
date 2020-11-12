@@ -1,4 +1,4 @@
-package conn
+package eth
 
 import (
 	"context"
@@ -21,13 +21,18 @@ type BlockCacheEvent struct {
 	GasLimit     float64 `json:"block_gas_limit"`
 	Usage        float64 `json:"block_usage"`
 	Interval     uint64
-	Timestamp    uint64
+	timestamp    uint64
 	Miner        string
 	Transactions []*TxEvent
+	ingest.BlockEvent
 }
 
 func (blockEvent *BlockCacheEvent) Number() *big.Int {
 	return blockEvent.number
+}
+
+func (blockEvent *BlockCacheEvent) Timestamp() uint64 {
+	return blockEvent.timestamp
 }
 
 func (blockEvent *BlockCacheEvent) ParentHash() string {
@@ -54,10 +59,11 @@ type TxEvent struct {
 type Processor struct {
 	client *ethclient.Client
 	signer types.EIP155Signer
+	fork *ForkWatcher
 }
 
-func NewProcessor(client *ethclient.Client) *Processor {
-	processor := &Processor{client: client}
+func NewProcessor(client *ethclient.Client, fork *ForkWatcher) *Processor {
+	processor := &Processor{client: client, fork: fork}
 	chainID, err := processor.client.NetworkID(context.Background())
 	if err != nil {
 		log.Fatal(err)
@@ -75,14 +81,14 @@ func (processor *Processor) NewBlockEvent(number *big.Int, parentHash string, ha
 	return interface{}(blockEvent).(ingest.BlockEvent)
 }
 
-func (processor *Processor) Process(obj interface{}, event ingest.BlockEvent) {
+func (processor *Processor) Process(obj interface{}, event ingest.BlockEvent, listening bool) {
 	block := obj.(*types.Block)
 	blockEvent := interface{}(event).(*BlockCacheEvent)
+	blockEvent.timestamp = block.Time()
 	blockEvent.Size = float64(block.Size())
 	blockEvent.Gas = float64(block.GasUsed())
 	blockEvent.GasLimit = float64(block.GasLimit())
 	blockEvent.Usage = math.Abs(float64(block.GasUsed()) * 100 / float64(block.GasLimit()))
-	blockEvent.Timestamp = block.Time()
 	blockEvent.Miner = block.Coinbase().Hex()
 	blockEvent.Transactions = make([]*TxEvent, len(block.Transactions()))
 	for i, tx := range block.Transactions() {
@@ -114,5 +120,10 @@ func (processor *Processor) Process(obj interface{}, event ingest.BlockEvent) {
 				}
 			}
 		}
+	}
+	blockEvent.SetFork(false)
+	if listening {
+		processor.fork.checkFork(blockEvent)
+		processor.fork.apply(blockEvent)
 	}
 }

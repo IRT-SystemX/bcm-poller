@@ -6,6 +6,7 @@ import (
 
 type BlockEvent interface {
 	Number() *big.Int
+	Timestamp() uint64
 }
 
 type RawEngine interface {
@@ -17,9 +18,10 @@ type RawEngine interface {
 type Connector interface {
 	Apply(interface{})
 	Revert(interface{})
+	SetReady()
 }
 
 type Processor interface {
 	NewBlockEvent(*big.Int, string, string) BlockEvent
-	Process(interface{}, BlockEvent)
+	Process(interface{}, BlockEvent, bool)
 }

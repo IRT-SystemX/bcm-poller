@@ -3,17 +3,25 @@ package eth
 import (
 	"container/list"
 	"log"
+	ingest "github.com/IRT-SystemX/bcm-poller/ingest"
 	"reflect"
 )
 
+type EthBlockEvent interface {
+	ingest.BlockEvent
+	ParentHash() string
+	Hash() string
+	SetFork(bool)
+}
+
 type ForkWatcher struct {
-	engine      *EthEngine
+	connector   ingest.Connector
 	maxForkSize int
 	chain       *list.List
 }
 
-func NewForkWatcher(engine *EthEngine, maxForkSize int) *ForkWatcher {
-	return &ForkWatcher{engine: engine, maxForkSize: maxForkSize, chain: list.New()}
+func NewForkWatcher(connector ingest.Connector, maxForkSize int) *ForkWatcher {
+	return &ForkWatcher{connector: connector, maxForkSize: maxForkSize, chain: list.New()}
 }
 
 func (fork *ForkWatcher) last() EthBlockEvent {
@@ -35,8 +43,8 @@ func (fork *ForkWatcher) revert(elem *list.Element) {
 	if fork.chain.Len() > 0 {
 		fork.chain.Remove(elem)
 	}
-	if fork.engine.Connector != nil && !reflect.ValueOf(fork.engine.Connector).IsNil() {
-		fork.engine.Connector.Revert(elem.Value.(EthBlockEvent))
+	if fork.connector != nil && !reflect.ValueOf(fork.connector).IsNil() {
+		fork.connector.Revert(elem.Value.(EthBlockEvent))
 	}
 }
 

@@ -32,7 +32,7 @@ type Engine struct {
 	RawEngine
 }
 
-func NewEngine(syncMode string, syncThreadPool int, syncThreadSize int, maxForkSize int) *Engine {
+func NewEngine(syncMode string, syncThreadPool int, syncThreadSize int) *Engine {
 	engine := &Engine{
 		start:          big.NewInt(0),
 		end:            big.NewInt(-1),
@@ -49,12 +49,12 @@ func NewEngine(syncMode string, syncThreadPool int, syncThreadSize int, maxForkS
 	return engine
 }
 
-func (engine *Engine) Start() *big.Int {
-	return engine.start
-}
-
 func (engine *Engine) Status() map[string]interface{} {
 	return engine.status
+}
+
+func (engine *Engine) Start() *big.Int {
+	return engine.start
 }
 
 func (engine *Engine) SetStart(val string, plusOne bool) {
@@ -76,25 +76,6 @@ func (engine *Engine) SetConnector(connector Connector) {
 
 func (engine *Engine) SetProcessor(processor Processor) {
 	engine.Processor = processor
-}
-
-func (engine *Engine) Initialize() {
-	if engine.status["connected"] == false {
-		engine.status["connected"] = true
-		go func() {
-			for {
-				select {
-				case blockEvent := <-engine.Queue:
-					if engine.Connector != nil && !reflect.ValueOf(engine.Connector).IsNil() {
-						engine.Connector.Apply(blockEvent)
-					}
-					engine.mux.Lock()
-					engine.status["current"] = blockEvent.Number().String()
-					engine.mux.Unlock()
-				}
-			}
-		}()
-	}
 }
 
 func (engine *Engine) sync() {
@@ -175,7 +156,27 @@ func (engine *Engine) printSync(current *big.Int) {
 	log.Printf("Synced %d%%", engine.synced)
 }
 
+func (engine *Engine) initialize() {
+	if engine.status["connected"] == false {
+		engine.status["connected"] = true
+		go func() {
+			for {
+				select {
+				case blockEvent := <-engine.Queue:
+					if engine.Connector != nil && !reflect.ValueOf(engine.Connector).IsNil() {
+						engine.Connector.Apply(blockEvent)
+					}
+					engine.mux.Lock()
+					engine.status["current"] = blockEvent.Number().String()
+					engine.mux.Unlock()
+				}
+			}
+		}()
+	}
+}
+
 func (engine *Engine) Init() {
+	engine.initialize()
 	last, err := engine.Latest()
 	if err != nil {
 		log.Fatal(err)
