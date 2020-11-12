@@ -2,7 +2,7 @@ package conn
 
 import (
 	"context"
-	ingest "github.com/IRT-SystemX/eth-poller/ingest"
+	ingest "github.com/IRT-SystemX/bcm-poller/ingest"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"

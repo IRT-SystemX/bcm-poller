@@ -1,23 +1,25 @@
 package ingest
 
 import (
-	"github.com/ethereum/go-ethereum/core/types"
 	"math/big"
 )
 
 type BlockEvent interface {
 	Number() *big.Int
-	ParentHash() string
-	Hash() string
-	SetFork(bool)
+}
+
+type RawEngine interface {
+    Latest() (*big.Int, error)
+    Process(number *big.Int, listening bool) BlockEvent
+    Listen()
 }
 
 type Connector interface {
-	Apply(BlockEvent)
-	Revert(BlockEvent)
+	Apply(interface{})
+	Revert(interface{})
 }
 
 type Processor interface {
 	NewBlockEvent(*big.Int, string, string) BlockEvent
-	Process(*types.Block, BlockEvent)
+	Process(interface{}, BlockEvent)
 }

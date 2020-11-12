@@ -27,8 +27,8 @@ RUN GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go install cmd/main.go
 
 FROM alpine:3.11 as install
 
-COPY --from=go_build /go/bin/main /usr/local/bin/eth-poller
+COPY --from=go_build /go/bin/main /usr/local/bin/poller
 
 EXPOSE 8000
 
-ENTRYPOINT ["eth-poller"]
+ENTRYPOINT ["poller"]

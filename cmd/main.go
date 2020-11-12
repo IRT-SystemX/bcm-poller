@@ -1,10 +1,11 @@
 package main
 
 import (
-	ingest "github.com/IRT-SystemX/eth-poller/ingest"
-	conn "github.com/IRT-SystemX/eth-poller/internal/conn"
-	probe "github.com/IRT-SystemX/eth-poller/internal/probe"
-	utils "github.com/IRT-SystemX/eth-poller/utils"
+	ingest "github.com/IRT-SystemX/bcm-poller/ingest"
+	eth "github.com/IRT-SystemX/bcm-poller/internal/eth"
+	conn "github.com/IRT-SystemX/bcm-poller/internal/eth/conn"
+	probe "github.com/IRT-SystemX/bcm-poller/internal/probe"
+	utils "github.com/IRT-SystemX/bcm-poller/utils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"log"
@@ -28,7 +29,7 @@ var (
 )
 
 func run(cmd *cobra.Command, args []string) {
-	engine := ingest.NewEngine(viper.GetString("url"), viper.GetString("syncMode"), viper.GetInt("syncThreadPool"), viper.GetInt("syncThreadSize"), maxForkSize)
+	engine := eth.NewEthEngine(viper.GetString("url"), viper.GetString("syncMode"), viper.GetInt("syncThreadPool"), viper.GetInt("syncThreadSize"), maxForkSize)
 	disk := probe.NewDiskUsage(viper.GetString("ledgerPath"), refresh)
 
 	log.Printf("Poller is connecting to " + viper.GetString("url"))
@@ -77,8 +78,8 @@ func main() {
 		viper.AutomaticEnv()
 	})
 	var rootCmd = &cobra.Command{
-		Use:   "eth-poller",
-		Short: "Ethereum event poller with RESTful API",
+		Use:   "poller",
+		Short: "Event poller with RESTful API",
 		Run:   run,
 	}
 	rootCmd.Flags().Int("port", port, "Port to run server on")

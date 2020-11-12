@@ -1,7 +1,10 @@
 
-# eth-poller
+# bcm-poller
 
-Ethereum event poller with RESTful API.
+Event poller with RESTful API for both Ethereum and Hyperledger Fabric.
+
+## Ethereum
+
 It connects to an Ethereum node and it gathers information about the network.
 In particular, it listens for blocks and it keeps count of specific events or mined blocks into counters available throught a REST API.
 It also keeps balance information for specific accounts.
@@ -34,10 +37,10 @@ It also backups the different counters periodically in order to be able resync f
 The options in command line allows to configure the poller behaviour:
 ```
 Usage:
-  eth-poller [flags]
+  poller [flags]
 
 Flags:
-  -h, --help                 help for eth-poller
+  -h, --help                 help for poller
       --url string           Address web3 (default "ws://localhost:8546")
       --config string        Config file (default "config.yml")
       --port int             Port to run server on (default 8000)
@@ -140,12 +143,12 @@ It uses Websocket interface to collect the metrics. Although, it was only tested
 
 * Build the docker image
 ```
-docker build --target install -t eth-poller $PWD
+docker build --target install -t bcm-poller $PWD
 ```
 
 * Run and connect to node
 ```
-docker run -it --rm --name poller -p 8000:8000 -v $PWD:/backup eth-poller --url ws://node:8546 --config /backup/config.yml
+docker run -it --rm --name poller -p 8000:8000 -v $PWD:/backup bcm-poller --url ws://node:8546 --config /backup/config.yml
 ```
 
 * Test api

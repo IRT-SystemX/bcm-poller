@@ -1,4 +1,4 @@
-module github.com/IRT-SystemX/eth-poller
+module github.com/IRT-SystemX/bcm-poller
 
 go 1.14
 

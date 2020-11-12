@@ -1,12 +1,6 @@
 package ingest
 
 import (
-	"context"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/ethereum/go-ethereum/rpc"
 	"log"
 	"math/big"
 	"reflect"
@@ -23,14 +17,7 @@ var (
 	hundred = big.NewInt(100)
 )
 
-type rpcBlockHash struct {
-	Hash common.Hash `json:"hash"`
-}
-
 type Engine struct {
-	url            string
-	client         *ethclient.Client
-	rawClient      *rpc.Client
 	start          *big.Int
 	end            *big.Int
 	syncMode       string
@@ -39,45 +26,35 @@ type Engine struct {
 	synced         int64
 	mux            sync.Mutex
 	status         map[string]interface{}
-	queue          chan BlockEvent
-	connector      Connector
-	processor      Processor
-	fork           *ForkWatcher
+	Queue          chan BlockEvent
+	Connector      Connector
+	Processor      Processor
+	RawEngine
 }
 
-func NewEngine(web3Socket string, syncMode string, syncThreadPool int, syncThreadSize int, maxForkSize int) *Engine {
-	engine := &Engine{url: web3Socket,
+func NewEngine(syncMode string, syncThreadPool int, syncThreadSize int, maxForkSize int) *Engine {
+	engine := &Engine{
 		start:          big.NewInt(0),
 		end:            big.NewInt(-1),
 		syncMode:       syncMode,
 		syncThreadPool: syncThreadPool,
 		syncThreadSize: syncThreadSize,
-		queue:          make(chan BlockEvent),
 		status: map[string]interface{}{
 			"connected": false,
 			"sync":      "0%%",
 			"current":   zero,
 		},
+		Queue:          make(chan BlockEvent),
 	}
-	engine.fork = NewForkWatcher(engine, maxForkSize)
 	return engine
 }
 
-func (engine *Engine) Client() *ethclient.Client {
-	return engine.client
+func (engine *Engine) Start() *big.Int {
+	return engine.start
 }
 
 func (engine *Engine) Status() map[string]interface{} {
 	return engine.status
-}
-
-func (engine *Engine) Latest() (*big.Int, error) {
-	header, err := engine.client.HeaderByNumber(context.Background(), nil)
-	if err != nil {
-		return nil, err
-	} else {
-		return header.Number, nil
-	}
 }
 
 func (engine *Engine) SetStart(val string, plusOne bool) {
@@ -94,37 +71,22 @@ func (engine *Engine) SetEnd(val string) {
 }
 
 func (engine *Engine) SetConnector(connector Connector) {
-	engine.connector = connector
+	engine.Connector = connector
 }
 
 func (engine *Engine) SetProcessor(processor Processor) {
-	engine.processor = processor
+	engine.Processor = processor
 }
 
-func (engine *Engine) Connect() *ethclient.Client {
-	for {
-		rawClient, err := rpc.DialContext(context.Background(), engine.url)
-		if err != nil {
-			time.Sleep(retry * time.Second)
-		} else {
-			engine.client = ethclient.NewClient(rawClient)
-			engine.rawClient = rawClient
-			break
-		}
-	}
-	engine.initialize()
-	return engine.client
-}
-
-func (engine *Engine) initialize() {
+func (engine *Engine) Initialize() {
 	if engine.status["connected"] == false {
 		engine.status["connected"] = true
 		go func() {
 			for {
 				select {
-				case blockEvent := <-engine.queue:
-					if engine.connector != nil && !reflect.ValueOf(engine.connector).IsNil() {
-						engine.connector.Apply(blockEvent)
+				case blockEvent := <-engine.Queue:
+					if engine.Connector != nil && !reflect.ValueOf(engine.Connector).IsNil() {
+						engine.Connector.Apply(blockEvent)
 					}
 					engine.mux.Lock()
 					engine.status["current"] = blockEvent.Number().String()
@@ -133,26 +95,6 @@ func (engine *Engine) initialize() {
 			}
 		}()
 	}
-}
-
-func (engine *Engine) process(number *big.Int) BlockEvent {
-	block, err := engine.client.BlockByNumber(context.Background(), number)
-	if err != nil {
-		log.Println("Error block: ", err)
-		return nil
-	}
-	var head rpcBlockHash
-	err = engine.rawClient.CallContext(context.Background(), &head, "eth_getBlockByNumber", hexutil.EncodeBig(number), false)
-	if err != nil {
-		log.Println("Error block hash: ", err)
-	}
-	log.Printf("Process block #%s (%s) %s", block.Number().String(), time.Unix(int64(block.Time()), 0).Format("2006.01.02 15:04:05"), head.Hash.Hex())
-	blockEvent := engine.processor.NewBlockEvent(block.Number(), block.ParentHash().Hex(), head.Hash.Hex())
-	blockEvent.SetFork(false)
-	if engine.processor != nil && !reflect.ValueOf(engine.processor).IsNil() {
-		engine.processor.Process(block, blockEvent)
-	}
-	return blockEvent
 }
 
 func (engine *Engine) sync() {
@@ -173,9 +115,9 @@ func (engine *Engine) sync() {
 
 func (engine *Engine) normalSync() {
 	for i := new(big.Int).Set(engine.start); i.Cmp(engine.end) < 0 || i.Cmp(engine.end) == 0; i.Add(i, one) {
-		blockEvent := engine.process(i)
+		blockEvent := engine.Process(i, false)
 		if blockEvent != nil {
-			engine.queue <- blockEvent
+			engine.Queue <- blockEvent
 		}
 		current := new(big.Int).Add(engine.start, i)
 		if new(big.Int).Mod(current, ten).Cmp(zero) == 0 && current.Cmp(engine.end) != 0 {
@@ -204,9 +146,9 @@ func (engine *Engine) fastSync() {
 							if i.Cmp(engine.end) > 0 {
 								break
 							}
-							blockEvent := engine.process(i)
+							blockEvent := engine.Process(i, false)
 							if blockEvent != nil {
-								engine.queue <- blockEvent
+								engine.Queue <- blockEvent
 							}
 						}
 					}(threadBegin)
@@ -245,29 +187,12 @@ func (engine *Engine) Init() {
 	engine.end = new(big.Int).Add(last, one)
 }
 
-func (engine *Engine) Listen() {
-	headers := make(chan *types.Header)
-	sub, err := engine.client.SubscribeNewHead(context.Background(), headers)
-	if err != nil {
-		log.Fatal(err)
-	}
-	for {
-		select {
-		case err := <-sub.Err():
-			log.Println("Error: ", err)
-		case header := <-headers:
-			//log.Printf("New block #%s", header.Number.String())
-			if header != nil {
-				for i := new(big.Int).Set(engine.end); i.Cmp(header.Number) < 0 || i.Cmp(header.Number) == 0; i.Add(i, one) {
-					blockEvent := engine.process(i)
-					if blockEvent != nil {
-						engine.fork.checkFork(blockEvent)
-						engine.queue <- blockEvent
-						engine.fork.apply(blockEvent)
-					}
-				}
-				engine.end = new(big.Int).Add(header.Number, one)
-			}
+func (engine *Engine) ListenProcess(number *big.Int) {
+	for i := new(big.Int).Set(engine.end); i.Cmp(number) < 0 || i.Cmp(number) == 0; i.Add(i, one) {
+		blockEvent := engine.Process(i, true)
+		if blockEvent != nil {
+			engine.Queue <- blockEvent
 		}
 	}
+	engine.end = new(big.Int).Add(number, one)
 }

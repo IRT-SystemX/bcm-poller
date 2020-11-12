@@ -1,4 +1,4 @@
-package ingest
+package eth
 
 import (
 	"container/list"
@@ -7,24 +7,24 @@ import (
 )
 
 type ForkWatcher struct {
-	engine      *Engine
+	engine      *EthEngine
 	maxForkSize int
 	chain       *list.List
 }
 
-func NewForkWatcher(engine *Engine, maxForkSize int) *ForkWatcher {
+func NewForkWatcher(engine *EthEngine, maxForkSize int) *ForkWatcher {
 	return &ForkWatcher{engine: engine, maxForkSize: maxForkSize, chain: list.New()}
 }
 
-func (fork *ForkWatcher) last() BlockEvent {
+func (fork *ForkWatcher) last() EthBlockEvent {
 	if fork.chain.Len() > 0 {
-		return fork.chain.Back().Value.(BlockEvent)
+		return fork.chain.Back().Value.(EthBlockEvent)
 	} else {
 		return nil
 	}
 }
 
-func (fork *ForkWatcher) apply(blockEvent BlockEvent) {
+func (fork *ForkWatcher) apply(blockEvent EthBlockEvent) {
 	if fork.chain.Len() >= fork.maxForkSize {
 		fork.chain.Remove(fork.chain.Front())
 	}
@@ -35,12 +35,12 @@ func (fork *ForkWatcher) revert(elem *list.Element) {
 	if fork.chain.Len() > 0 {
 		fork.chain.Remove(elem)
 	}
-	if fork.engine.connector != nil && !reflect.ValueOf(fork.engine.connector).IsNil() {
-		fork.engine.connector.Revert(elem.Value.(BlockEvent))
+	if fork.engine.Connector != nil && !reflect.ValueOf(fork.engine.Connector).IsNil() {
+		fork.engine.Connector.Revert(elem.Value.(EthBlockEvent))
 	}
 }
 
-func (fork *ForkWatcher) checkFork(blockEvent BlockEvent) {
+func (fork *ForkWatcher) checkFork(blockEvent EthBlockEvent) {
 	if fork.last() != nil {
 		if fork.last().Hash() != blockEvent.ParentHash() {
 			blockEvent.SetFork(true)
@@ -53,7 +53,7 @@ func (fork *ForkWatcher) checkFork(blockEvent BlockEvent) {
 				if blockEvent.Number().Cmp(fork.last().Number()) <= 0 {
 					//log.Printf("Number <= Last")
 					toRevert := list.New()
-					for elem := fork.chain.Back(); elem != nil && blockEvent.Number().Cmp(elem.Value.(BlockEvent).Number()) <= 0; elem = elem.Prev() {
+					for elem := fork.chain.Back(); elem != nil && blockEvent.Number().Cmp(elem.Value.(EthBlockEvent).Number()) <= 0; elem = elem.Prev() {
 						toRevert.PushBack(elem)
 					}
 					for elem := toRevert.Front(); elem != nil; elem = elem.Next() {
@@ -71,7 +71,7 @@ func (fork *ForkWatcher) checkFork(blockEvent BlockEvent) {
 func (fork *ForkWatcher) debugChain() {
 	i := 0
 	for e := fork.chain.Back(); e != nil; e = e.Prev() {
-		log.Printf("%x %s", i, e.Value.(BlockEvent).Hash())
+		log.Printf("%x %s", i, e.Value.(EthBlockEvent).Hash())
 		i++
 	}
 }
