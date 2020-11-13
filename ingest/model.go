@@ -6,7 +6,6 @@ import (
 
 type BlockEvent interface {
 	Number() *big.Int
-	Timestamp() uint64
 }
 
 type RawEngine interface {
