@@ -65,6 +65,7 @@ func runHlf(cmd *cobra.Command, args []string) {
 	initEngine(viper.GetString("start"), cache.Stats["block"].Count, viper.GetString("end"), engine, interface{}(cache).(model.Connector), interface{}(processor).(model.Processor))
 	bind := map[string]interface{}{
 		"stats":    cache.Stats,
+		"tracking": cache.Tracking,
 		"status":   engine.Status(),
 	}
 	run(viper.GetString("port"), viper.GetString("ledgerPath"), engine, interface{}(cache).(model.Connector), bind)

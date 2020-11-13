@@ -84,10 +84,11 @@ const (
 	TO      Field = "to"
 	VALUE   Field = "value"
 	DEPLOY  Field = "deploy"
+	METHOD  Field = "method"
 	UNKNOWN Field = ""
 )
 
-var fields = [...]Field{FROM, TO, VALUE, DEPLOY, UNKNOWN}
+var fields = [...]Field{FROM, TO, VALUE, DEPLOY, METHOD, UNKNOWN}
 
 func parseField(field string) Field {
 	for _, f := range fields {
@@ -152,6 +153,17 @@ func UnmarshalEvents(raw map[interface{}]interface{}, field string) map[string][
 		output[key.(string)] = rules
 	}
 	return output
+}
+
+func UnmarshalTrackingEvents(arr []interface{}, events []*Event) {
+	for _, obj := range arr {
+		for _, x := range events {
+			if x.Label == obj.(map[interface{}]interface{})["label"] {
+				x.Count = obj.(map[interface{}]interface{})["count"].(string)
+				x.Current, _ = new(big.Int).SetString(x.Count, 10)
+			}
+		}
+	}
 }
 
 func unmarshalStats(key string, value map[interface{}]interface{}, stats map[string]*Stats) {

@@ -38,7 +38,7 @@ type Tracking struct {
 
 type Cache struct {
 	*utils.RawCache
-	Tracking        *Tracking
+	Tracking *Tracking
 	client *ethclient.Client
 	ingest.Connector
 }
@@ -52,7 +52,7 @@ func NewCache(client *ethclient.Client, configFile string, backupFile string, re
 	cache.RawCache.Stats["fork"] = utils.NewStats()
 	raw := cache.LoadBackup()
 	if raw != nil {
-		unmarshalTrackingEvents(raw["tracking"].(map[interface{}]interface{})["events"].([]interface{}), cache.Tracking.Events)
+		utils.UnmarshalTrackingEvents(raw["tracking"].(map[interface{}]interface{})["events"].([]interface{}), cache.Tracking.Events)
 		unmarshalTrackingMiners(raw["tracking"].(map[interface{}]interface{})["miners"].([]interface{}), cache.Tracking.Miners)
 	}
 	return cache
@@ -127,17 +127,6 @@ func (cache *Cache) Revert(event interface{}) {
 		if val == blockEvent.Miner {
 			//log.Printf("> revert miner %s", miner.Label)
 			miner.Decrement()
-		}
-	}
-}
-
-func unmarshalTrackingEvents(arr []interface{}, events []*utils.Event) {
-	for _, obj := range arr {
-		for _, x := range events {
-			if x.Label == obj.(map[interface{}]interface{})["label"] {
-				x.Count = obj.(map[interface{}]interface{})["count"].(string)
-				x.Current, _ = new(big.Int).SetString(x.Count, 10)
-			}
 		}
 	}
 }
