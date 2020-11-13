@@ -64,10 +64,6 @@ func (processor *Processor) NewBlockEvent(number *big.Int, parentHash string, ha
 	return interface{}(blockEvent).(ingest.BlockEvent)
 }
 
-func getTimestamp() {
-	
-}
-
 func (processor *Processor) Process(obj interface{}, event ingest.BlockEvent, listening bool) {
 	var buf bytes.Buffer
 	err := protolator.DeepMarshalJSON(&buf, obj.(proto.Message))

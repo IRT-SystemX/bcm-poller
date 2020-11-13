@@ -165,6 +165,7 @@ Usage:
 Flags:
   -h, --help                 help for poller
       --path string          Path hlf files (default "/tmp/hyperledger-fabric-network")
+      --user string          User hlf (default "admin")
       --config string        Config file (default "config.yml")
       --port int             Port to run server on (default 8000)
       --restore              Restore counters from the backup

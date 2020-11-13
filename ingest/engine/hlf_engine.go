@@ -11,48 +11,118 @@ import (
 	"encoding/hex"
 	"math/big"
 	"time"
+	"os"
+	"io/ioutil"
+	"encoding/json"
+	"errors"
 )
 
 type HlfEngine struct {
 	*ingest.Engine
 	path           string
+	user		   string
 	network        *gateway.Network
 	client         *ledger.Client
 }
 
-func NewHlfEngine(path string, syncMode string, syncThreadPool int, syncThreadSize int) *ingest.Engine {
+func NewHlfEngine(path string, user string, syncMode string, syncThreadPool int, syncThreadSize int) *ingest.Engine {
 	engine := &HlfEngine{
 		Engine: ingest.NewEngine(syncMode, syncThreadPool, syncThreadSize),
 		path: path,
+		user: user,
 	}
 	engine.Engine.RawEngine = engine
 	return engine.Engine
 }
 
-var (
-    WALLET = "/tmp/hyperledger-fabric-network/wallets/organizations/org1.bnc.com"
-    PATH = "/tmp/hyperledger-fabric-network/settings/connection-org1.json"
-    USER = "admin"
-    CHANNEL = "mychannel"
-    contextUser fabsdk.ContextOption = fabsdk.WithUser("Admin")
-	contextOrg fabsdk.ContextOption = fabsdk.WithOrg("org1")
-)
+func loadProfile(pathFile string) map[string]interface{} {
+	_, err := os.Stat(pathFile)
+	if err == nil {
+		data, err := ioutil.ReadFile(pathFile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		raw := make(map[string]interface{})
+		err = json.Unmarshal([]byte(data), &raw)
+		if err != nil {
+			log.Fatalf("error: %v", err)
+		}
+		return raw
+	}
+	return nil
+}
+
+func getWalletPath(raw map[string]interface{}) (string, error) {
+	_, ok := raw["client"]
+	if !ok {
+		return "", errors.New("Error: client not found in profile")
+	}
+	client := raw["client"].(map[string]interface{})
+	_, ok = client["credentialStore"]
+	if !ok {
+		return "", errors.New("Error: credentialStore not found in profile")
+	}
+	credentialStore := client["credentialStore"].(map[string]interface{})
+	_, ok = credentialStore["path"]
+	if !ok {
+		return "", errors.New("Error: path not found in profile")
+	}
+	return credentialStore["path"].(string), nil
+}
+
+func getChannelName(raw map[string]interface{}) (string, error) {
+	_, ok := raw["channels"]
+	if !ok {
+		return "", errors.New("Error: channels not found in profile")
+	}
+	channels := raw["channels"].(map[string]interface{})
+	return reflect.ValueOf(channels).MapKeys()[0].String(), nil
+}
+
+func getOrgName(raw map[string]interface{}) (string, error) {
+	_, ok := raw["client"]
+	if !ok {
+		return "", errors.New("Error: client not found in profile")
+	}
+	client := raw["client"].(map[string]interface{})
+	_, ok = client["organization"]
+	if !ok {
+		return "", errors.New("Error: organization not found in profile")
+	}
+	return client["organization"].(string), nil
+}
 
 func (engine *HlfEngine) Connect() {
-    wallet, err := gateway.NewFileSystemWallet(WALLET)
+	configFile := config.FromFile(engine.path)
+	profile := loadProfile(engine.path)
+	walletPath, err := getWalletPath(profile)
+	if err != nil {
+		log.Fatal(err)
+	}
+	channelName, err := getChannelName(profile)
+	if err != nil {
+		log.Fatal(err)
+	}
+	orgName, err := getOrgName(profile)
+	if err != nil {
+		log.Fatal(err)
+	}
+	contextOrg := fabsdk.WithOrg(orgName)
+	contextUser := fabsdk.WithUser("Admin") // TODO: fix
+    wallet, err := gateway.NewFileSystemWallet(walletPath)
 	if err != nil {
 		log.Fatal(err)
 	}
 	gw, err := gateway.Connect(
-		gateway.WithConfig(config.FromFile(PATH)),
-		gateway.WithIdentity(wallet, USER),
+		gateway.WithConfig(configFile),
+		gateway.WithIdentity(wallet, engine.user),
 	)
 	if err != nil {
 		log.Fatal(err)
 	}
 	log.Printf("gateway ok")
 	for {
-		network, err := gw.GetNetwork(CHANNEL)
+		network, err := gw.GetNetwork(channelName)
 		if err != nil {
 			time.Sleep(retry * time.Second)
 		} else {
@@ -61,11 +131,11 @@ func (engine *HlfEngine) Connect() {
 			break
 		}
 	}
-	sdk, err := fabsdk.New(config.FromFile(PATH))
+	sdk, err := fabsdk.New(configFile)
 	if err != nil {
 		log.Fatal(err)
 	}
-	context := sdk.ChannelContext(CHANNEL, contextUser, contextOrg, )
+	context := sdk.ChannelContext(channelName, contextUser, contextOrg, )
 	client, err := ledger.New(context)
 	if err != nil {
 		log.Fatal(err)
