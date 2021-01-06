@@ -149,7 +149,7 @@ func main() {
 	}
 	hlfCmd.Flags().String("path", hlfPath, "Path hlf files")
 	hlfCmd.Flags().String("walletUser", walletUser, "Wallet user hlf")
-	hlfCmd.Flags().String("orgUser", walletUser, "Org user hlf")
+	hlfCmd.Flags().String("orgUser", orgUser, "Org user hlf")
 	viper.BindPFlag("path", hlfCmd.Flags().Lookup("path"))
 	viper.BindPFlag("walletUser", hlfCmd.Flags().Lookup("walletUser"))
 	viper.BindPFlag("orgUser", hlfCmd.Flags().Lookup("orgUser"))
