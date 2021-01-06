@@ -20,22 +20,24 @@ import (
 type HlfEngine struct {
 	*ingest.Engine
 	path           string
-	user		   string
+	walletUser	   string
+	orgUser        string
 	network        *gateway.Network
 	client         *ledger.Client
 }
 
-func NewHlfEngine(path string, user string, syncMode string, syncThreadPool int, syncThreadSize int) *ingest.Engine {
+func NewHlfEngine(path string, walletUser string, orgUser string, syncMode string, syncThreadPool int, syncThreadSize int) *ingest.Engine {
 	engine := &HlfEngine{
 		Engine: ingest.NewEngine(syncMode, syncThreadPool, syncThreadSize),
 		path: path,
-		user: user,
+		walletUser: walletUser,
+		orgUser: orgUser,
 	}
 	engine.Engine.RawEngine = engine
 	return engine.Engine
 }
 
-func loadProfile(pathFile string) map[string]interface{} {
+func loadProfile(pathFile string) (map[string]interface{}, error) {
 	_, err := os.Stat(pathFile)
 	if err == nil {
 		data, err := ioutil.ReadFile(pathFile)
@@ -47,9 +49,10 @@ func loadProfile(pathFile string) map[string]interface{} {
 		if err != nil {
 			log.Fatalf("error: %v", err)
 		}
-		return raw
+		return raw, nil
+	} else {
+		return nil, errors.New("Error: connection profile not found ("+pathFile+")")
 	}
-	return nil
 }
 
 func getWalletPath(raw map[string]interface{}) (string, error) {
@@ -93,13 +96,17 @@ func getOrgName(raw map[string]interface{}) (string, error) {
 }
 
 func (engine *HlfEngine) Connect() {
-	configFile := config.FromFile(engine.path)
-	profile := loadProfile(engine.path)
-	walletPath, err := getWalletPath(profile)
+	profile, err := loadProfile(engine.path)
 	if err != nil {
 		log.Fatal(err)
 	}
 	channelName, err := getChannelName(profile)
+	if err != nil {
+		log.Fatal(err)
+	}
+	configFile := config.FromFile(engine.path)
+	// create client
+	sdk, err := fabsdk.New(configFile)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -108,14 +115,29 @@ func (engine *HlfEngine) Connect() {
 		log.Fatal(err)
 	}
 	contextOrg := fabsdk.WithOrg(orgName)
-	contextUser := fabsdk.WithUser("Admin") // TODO: fix
+	contextUser := fabsdk.WithUser(engine.orgUser)
+	client, err := ledger.New(sdk.ChannelContext(channelName, contextUser, contextOrg, ))
+	if err != nil {
+		log.Fatal(err)
+	}
+	engine.client = client
+	log.Printf("ledger ok")
+	// create network
+	walletPath, err := getWalletPath(profile)
+	if err != nil {
+		log.Fatal(err)
+	}
     wallet, err := gateway.NewFileSystemWallet(walletPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	_, err = wallet.Get(engine.walletUser)
 	if err != nil {
 		log.Fatal(err)
 	}
 	gw, err := gateway.Connect(
 		gateway.WithConfig(configFile),
-		gateway.WithIdentity(wallet, engine.user),
+		gateway.WithIdentity(wallet, engine.walletUser),
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -131,16 +153,6 @@ func (engine *HlfEngine) Connect() {
 			break
 		}
 	}
-	sdk, err := fabsdk.New(configFile)
-	if err != nil {
-		log.Fatal(err)
-	}
-	context := sdk.ChannelContext(channelName, contextUser, contextOrg, )
-	client, err := ledger.New(context)
-	if err != nil {
-		log.Fatal(err)
-	}
-	engine.client = client
 }
 
 func (engine *HlfEngine) Latest() (*big.Int, error) {

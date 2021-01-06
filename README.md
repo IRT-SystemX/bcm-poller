@@ -247,7 +247,7 @@ docker build --target install -t bcm-poller $PWD
 
 * Run and connect to node
 ```
-docker run -it --rm --name poller -p 8000:8000 -v $PWD:/backup bcm-poller --url ws://node:8546 --config /backup/config.yml
+docker run -it --rm --name poller -p 8000:8000 -v $PWD:/backup bcm-poller eth --url ws://node:8546 --config /backup/config.yml
 ```
 
 * Test api

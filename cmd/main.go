@@ -19,7 +19,8 @@ const (
 var (
 	ethUrl          string = "ws://localhost:8546"
 	hlfPath         string = "/tmp/hyperledger-fabric-network/settings/connection-org1.json"
-	user            string = "admin"
+	walletUser      string = "admin"
+	orgUser         string = "Admin"
 	port            int    = 8000
 	config          string = "config.yml"
 	restore         bool   = false
@@ -54,7 +55,7 @@ func runEth(cmd *cobra.Command, args []string) {
 }
 
 func runHlf(cmd *cobra.Command, args []string) {
-	engine := ingest.NewHlfEngine(viper.GetString("path"), viper.GetString("user"), viper.GetString("syncMode"), viper.GetInt("syncThreadPool"), viper.GetInt("syncThreadSize"))
+	engine := ingest.NewHlfEngine(viper.GetString("path"), viper.GetString("walletUser"), viper.GetString("orgUser"), viper.GetString("syncMode"), viper.GetInt("syncThreadPool"), viper.GetInt("syncThreadSize"))
 
 	log.Printf("Poller is connecting")
 	interface{}(engine.RawEngine).(*ingest.HlfEngine).Connect()
@@ -147,9 +148,11 @@ func main() {
 		Run:   runHlf,
 	}
 	hlfCmd.Flags().String("path", hlfPath, "Path hlf files")
-	hlfCmd.Flags().String("user", user, "User hlf")
+	hlfCmd.Flags().String("walletUser", walletUser, "Wallet user hlf")
+	hlfCmd.Flags().String("orgUser", walletUser, "Org user hlf")
 	viper.BindPFlag("path", hlfCmd.Flags().Lookup("path"))
-	viper.BindPFlag("user", hlfCmd.Flags().Lookup("user"))
+	viper.BindPFlag("walletUser", hlfCmd.Flags().Lookup("walletUser"))
+	viper.BindPFlag("orgUser", hlfCmd.Flags().Lookup("orgUser"))
 	var rootCmd = &cobra.Command{
 		Short: "Event poller with RESTful API",
 	}
