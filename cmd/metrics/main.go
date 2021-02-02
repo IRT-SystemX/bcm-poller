@@ -113,35 +113,9 @@ func run(port string, ledgerPath string, engine *model.Engine, cache model.Conne
 	server.Start()
 }
 
-func fillCmd(cmd *cobra.Command) *cobra.Command {
-	cmd.Flags().Int("port", port, "Port to run server on")
-	cmd.Flags().String("config", config, "Config file")
-	cmd.Flags().String("backupPath", backupPath, "Backup file path")
-	cmd.Flags().Int("backup", backupFrequency, "Backup frequency in number of blocks")
-	cmd.Flags().String("syncMode", syncMode, "Sync mode (fast or normal)")
-	cmd.Flags().Int("syncThreadPool", syncThreadPool, "Nb of thread to sync")
-	cmd.Flags().Int("syncThreadSize", syncThreadSize, "Nb of blocks per thread per sync round")
-	cmd.Flags().String("start", start, "Sync start block")
-	cmd.Flags().String("end", end, "Sync end block")
-	cmd.Flags().Bool("restore", restore, "Restore backup")
-	cmd.Flags().String("ledgerPath", ledgerPath, "Monitored ledger path on disk")
-	viper.BindPFlag("port", cmd.Flags().Lookup("port"))
-	viper.BindPFlag("config", cmd.Flags().Lookup("config"))
-	viper.BindPFlag("backupPath", cmd.Flags().Lookup("backupPath"))
-	viper.BindPFlag("backup", cmd.Flags().Lookup("backup"))
-	viper.BindPFlag("syncMode", cmd.Flags().Lookup("syncMode"))
-	viper.BindPFlag("syncThreadPool", cmd.Flags().Lookup("syncThreadPool"))
-	viper.BindPFlag("syncThreadSize", cmd.Flags().Lookup("syncThreadSize"))
-	viper.BindPFlag("restore", cmd.Flags().Lookup("restore"))
-	viper.BindPFlag("start", cmd.Flags().Lookup("start"))
-	viper.BindPFlag("end", cmd.Flags().Lookup("end"))
-	viper.BindPFlag("ledgerPath", cmd.Flags().Lookup("ledgerPath"))
-	return cmd
-}
-
 func main() {
 	cobra.OnInitialize(func() {
-		viper.SetEnvPrefix("ETH")
+		viper.SetEnvPrefix("POLLER")
 		viper.AutomaticEnv()
 	})
 	var ethCmd = &cobra.Command{
@@ -167,8 +141,30 @@ func main() {
 	var rootCmd = &cobra.Command{
 		Short: "Event poller with RESTful API",
 	}
-	rootCmd.AddCommand(fillCmd(ethCmd))
-	rootCmd.AddCommand(fillCmd(hlfCmd))
+	rootCmd.AddCommand(ethCmd)
+	rootCmd.AddCommand(hlfCmd)
+	rootCmd.PersistentFlags().Int("port", port, "Port to run server on")
+	rootCmd.PersistentFlags().String("config", config, "Config file")
+	rootCmd.PersistentFlags().String("backupPath", backupPath, "Backup file path")
+	rootCmd.PersistentFlags().Int("backup", backupFrequency, "Backup frequency in number of blocks")
+	rootCmd.PersistentFlags().String("syncMode", syncMode, "Sync mode (fast or normal)")
+	rootCmd.PersistentFlags().Int("syncThreadPool", syncThreadPool, "Nb of thread to sync")
+	rootCmd.PersistentFlags().Int("syncThreadSize", syncThreadSize, "Nb of blocks per thread per sync round")
+	rootCmd.PersistentFlags().String("start", start, "Sync start block")
+	rootCmd.PersistentFlags().String("end", end, "Sync end block")
+	rootCmd.PersistentFlags().Bool("restore", restore, "Restore backup")
+	rootCmd.PersistentFlags().String("ledgerPath", ledgerPath, "Monitored ledger path on disk")
+	viper.BindPFlag("port", rootCmd.PersistentFlags().Lookup("port"))
+	viper.BindPFlag("config", rootCmd.PersistentFlags().Lookup("config"))
+	viper.BindPFlag("backupPath", rootCmd.PersistentFlags().Lookup("backupPath"))
+	viper.BindPFlag("backup", rootCmd.PersistentFlags().Lookup("backup"))
+	viper.BindPFlag("syncMode", rootCmd.PersistentFlags().Lookup("syncMode"))
+	viper.BindPFlag("syncThreadPool", rootCmd.PersistentFlags().Lookup("syncThreadPool"))
+	viper.BindPFlag("syncThreadSize", rootCmd.PersistentFlags().Lookup("syncThreadSize"))
+	viper.BindPFlag("restore", rootCmd.PersistentFlags().Lookup("restore"))
+	viper.BindPFlag("start", rootCmd.PersistentFlags().Lookup("start"))
+	viper.BindPFlag("end", rootCmd.PersistentFlags().Lookup("end"))
+	viper.BindPFlag("ledgerPath", rootCmd.PersistentFlags().Lookup("ledgerPath"))
 	if err := rootCmd.Execute(); err != nil {
 		log.Fatal(err)
 	}

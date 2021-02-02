@@ -19,7 +19,7 @@ type Cache struct {
 
 func NewCache(configFile string, backupFile string, restore bool, backupFrequency int64) *Cache {
 	cache := &Cache{
-		RawCache: metrics.NewRawCache(configFile, backupFile, restore, backupFrequency),
+		RawCache: metrics.NewRawCache(backupFile, restore, backupFrequency),
 		Tracking: parseConfig(configFile),
 	}
 	raw := cache.LoadBackup()

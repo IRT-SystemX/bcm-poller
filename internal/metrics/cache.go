@@ -198,6 +198,7 @@ func LoadConfig(pathFile string) map[interface{}]interface{} {
 		if err != nil {
 			log.Fatalf("error: %v", err)
 		}
+		log.Printf("Tracking configuration " + pathFile)
 		return raw
 	}
 	return nil
@@ -211,7 +212,7 @@ type RawCache struct {
 	Backup          map[string]interface{}
 }
 
-func NewRawCache(configFile string, backupFile string, restore bool, backupFrequency int64) *RawCache {
+func NewRawCache(backupFile string, restore bool, backupFrequency int64) *RawCache {
 	cache := &RawCache{
 		backupFile:      backupFile,
 		backupFrequency: big.NewInt(backupFrequency),
