@@ -14,6 +14,10 @@ type Fetcher struct {
 }
 
 func NewFetcher(host string) *Fetcher {
+	_, err := http.Post(host, "application/json", bytes.NewBufferString(""))
+	if err != nil {
+		return nil
+	}
 	return &Fetcher{host: host}
 }
 

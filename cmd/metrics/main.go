@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	eth "github.com/IRT-SystemX/bcm-poller/internal/metrics/eth"
 	hlf "github.com/IRT-SystemX/bcm-poller/internal/metrics/hlf"
 	model "github.com/IRT-SystemX/bcm-poller/poller"
@@ -102,6 +103,9 @@ func run(port string, ledgerPath string, engine *model.Engine, cache model.Conne
 	server := utils.NewServer(port)
 	server.Bind(bind)
 	if viper.GetBool("metrics") {
+		if interface{}(cache).(*eth.ExporterCache).Fetcher == nil {
+			log.Fatal(errors.New("Cannot connect to " + viper.GetString("api") + " for metrics"))
+		}
 		registry := prometheus.NewPedanticRegistry()
 		registry.MustRegister(interface{}(cache).(prometheus.Collector))
 		http.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{ErrorLog: log.New(os.Stderr, log.Prefix(), log.Flags()), ErrorHandling: promhttp.ContinueOnError}))
