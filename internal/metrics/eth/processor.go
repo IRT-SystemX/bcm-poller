@@ -2,7 +2,7 @@ package eth
 
 import (
 	"context"
-	ingest "github.com/IRT-SystemX/bcm-poller/ingest"
+	poller "github.com/IRT-SystemX/bcm-poller/poller"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -22,9 +22,11 @@ type BlockCacheEvent struct {
 	Usage        float64 `json:"block_usage"`
 	Interval     uint64
 	timestamp    uint64
+	difficulty   string
+	uncles       uint64
 	Miner        string
 	Transactions []*TxEvent
-	ingest.BlockEvent
+	poller.BlockEvent
 }
 
 func (blockEvent *BlockCacheEvent) Number() *big.Int {
@@ -59,7 +61,7 @@ type TxEvent struct {
 type Processor struct {
 	client *ethclient.Client
 	signer types.EIP155Signer
-	fork *ForkWatcher
+	fork   *ForkWatcher
 }
 
 func NewProcessor(client *ethclient.Client, fork *ForkWatcher) *Processor {
@@ -72,19 +74,21 @@ func NewProcessor(client *ethclient.Client, fork *ForkWatcher) *Processor {
 	return processor
 }
 
-func (processor *Processor) NewBlockEvent(number *big.Int, parentHash string, hash string) ingest.BlockEvent {
+func (processor *Processor) NewBlockEvent(number *big.Int, parentHash string, hash string) poller.BlockEvent {
 	blockEvent := &BlockCacheEvent{
 		number:     number,
 		parentHash: parentHash,
 		hash:       hash,
 	}
-	return interface{}(blockEvent).(ingest.BlockEvent)
+	return interface{}(blockEvent).(poller.BlockEvent)
 }
 
-func (processor *Processor) Process(obj interface{}, event ingest.BlockEvent, listening bool) {
+func (processor *Processor) Process(obj interface{}, event poller.BlockEvent, listening bool) {
 	block := obj.(*types.Block)
 	blockEvent := interface{}(event).(*BlockCacheEvent)
 	blockEvent.timestamp = block.Time()
+	blockEvent.difficulty = block.Difficulty().String()
+	blockEvent.uncles = uint64(len(block.Uncles()))
 	blockEvent.Size = float64(block.Size())
 	blockEvent.Gas = float64(block.GasUsed())
 	blockEvent.GasLimit = float64(block.GasLimit())

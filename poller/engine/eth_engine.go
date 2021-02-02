@@ -2,7 +2,7 @@ package engine
 
 import (
 	"context"
-	ingest "github.com/IRT-SystemX/bcm-poller/ingest"
+	poller "github.com/IRT-SystemX/bcm-poller/poller"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	retry   = time.Duration(5)
+	retry = time.Duration(5)
 )
 
 type rpcBlockHash struct {
@@ -23,16 +23,16 @@ type rpcBlockHash struct {
 }
 
 type EthEngine struct {
-	*ingest.Engine
-	url            string
-	client         *ethclient.Client
-	rawClient      *rpc.Client
+	*poller.Engine
+	url       string
+	client    *ethclient.Client
+	rawClient *rpc.Client
 }
 
-func NewEthEngine(web3Socket string, syncMode string, syncThreadPool int, syncThreadSize int) *ingest.Engine {
+func NewEthEngine(web3Socket string, syncMode string, syncThreadPool int, syncThreadSize int) *poller.Engine {
 	engine := &EthEngine{
-		Engine: ingest.NewEngine(syncMode, syncThreadPool, syncThreadSize),
-		url: web3Socket,
+		Engine: poller.NewEngine(syncMode, syncThreadPool, syncThreadSize),
+		url:    web3Socket,
 	}
 	engine.Engine.RawEngine = engine
 	return engine.Engine
@@ -61,7 +61,7 @@ func (engine *EthEngine) Latest() (*big.Int, error) {
 	}
 }
 
-func (engine *EthEngine) Process(number *big.Int, listening bool) ingest.BlockEvent {
+func (engine *EthEngine) Process(number *big.Int, listening bool) poller.BlockEvent {
 	block, err := engine.client.BlockByNumber(context.Background(), number)
 	if err != nil {
 		log.Println("Error block: ", err)

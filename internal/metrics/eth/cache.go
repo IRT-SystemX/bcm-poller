@@ -2,8 +2,8 @@ package eth
 
 import (
 	"context"
-	ingest "github.com/IRT-SystemX/bcm-poller/ingest"
-	utils "github.com/IRT-SystemX/bcm-poller/internal"
+	metrics "github.com/IRT-SystemX/bcm-poller/internal/metrics"
+	poller "github.com/IRT-SystemX/bcm-poller/poller"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"log"
@@ -11,7 +11,7 @@ import (
 )
 
 type Miner struct {
-	utils.Stats
+	metrics.Stats
 	Id           string `json:"id"`
 	Label        string `json:"label"`
 	CurrentBlock string `json:"currentBlock"`
@@ -31,28 +31,28 @@ type Balance struct {
 }
 
 type Tracking struct {
-	Events   []*utils.Event   `json:"events"`
-	Miners   []*Miner   `json:"miners"`
-	Balances []*Balance `json:"balances"`
+	Events   []*metrics.Event `json:"events"`
+	Miners   []*Miner         `json:"miners"`
+	Balances []*Balance       `json:"balances"`
 }
 
 type Cache struct {
-	*utils.RawCache
+	*metrics.RawCache
 	Tracking *Tracking
-	client *ethclient.Client
-	ingest.Connector
+	client   *ethclient.Client
+	poller.Connector
 }
 
 func NewCache(client *ethclient.Client, configFile string, backupFile string, restore bool, backupFrequency int64) *Cache {
 	cache := &Cache{
-		RawCache: utils.NewRawCache(configFile, backupFile, restore, backupFrequency),
+		RawCache: metrics.NewRawCache(configFile, backupFile, restore, backupFrequency),
 		Tracking: parseConfig(configFile),
-		client: client,
+		client:   client,
 	}
-	cache.RawCache.Stats["fork"] = utils.NewStats()
+	cache.RawCache.Stats["fork"] = metrics.NewStats()
 	raw := cache.LoadBackup()
 	if raw != nil {
-		utils.UnmarshalTrackingEvents(raw["tracking"].(map[interface{}]interface{})["events"].([]interface{}), cache.Tracking.Events)
+		metrics.UnmarshalTrackingEvents(raw["tracking"].(map[interface{}]interface{})["events"].([]interface{}), cache.Tracking.Events)
 		unmarshalTrackingMiners(raw["tracking"].(map[interface{}]interface{})["miners"].([]interface{}), cache.Tracking.Miners)
 	}
 	return cache
@@ -156,12 +156,12 @@ func unmarshalAddress(raw map[interface{}]interface{}, field string) map[string]
 }
 
 func parseConfig(config string) *Tracking {
-	tracking := &Tracking{Events: make([]*utils.Event, 0), Miners: make([]*Miner, 0), Balances: make([]*Balance, 0)}
-	raw := utils.LoadConfig(config)
+	tracking := &Tracking{Events: make([]*metrics.Event, 0), Miners: make([]*Miner, 0), Balances: make([]*Balance, 0)}
+	raw := metrics.LoadConfig(config)
 	if raw != nil {
-		events := utils.UnmarshalEvents(raw, "events")
+		events := metrics.UnmarshalEvents(raw, "events")
 		for key, value := range events {
-			tracking.Events = append(tracking.Events, utils.NewEvent(key, value))
+			tracking.Events = append(tracking.Events, metrics.NewEvent(key, value))
 		}
 		miners := unmarshalAddress(raw, "miners")
 		for key, value := range miners {
@@ -175,26 +175,26 @@ func parseConfig(config string) *Tracking {
 	return tracking
 }
 
-func (*Cache) check(rule *utils.EventRule, obj interface{}) bool {
+func (*Cache) check(rule *metrics.EventRule, obj interface{}) bool {
 	tx := obj.(*TxEvent)
 	switch rule.Field {
-	case utils.FROM:
+	case metrics.FROM:
 		val := common.HexToAddress(rule.Value).Hex()
 		return val == tx.Sender
-	case utils.TO:
+	case metrics.TO:
 		val := common.HexToAddress(rule.Value).Hex()
 		return val == tx.Receiver
-	case utils.VALUE:
+	case metrics.VALUE:
 		val, _ := new(big.Int).SetString(rule.Value, 10)
 		switch rule.Operator {
-		case utils.EQ:
+		case metrics.EQ:
 			return tx.Value.Cmp(val) == 0
-		case utils.GT:
+		case metrics.GT:
 			return tx.Value.Cmp(val) >= 0
-		case utils.LT:
+		case metrics.LT:
 			return tx.Value.Cmp(val) <= 0
 		}
-	case utils.DEPLOY:
+	case metrics.DEPLOY:
 		return tx.Deploy != "0x0000000000000000000000000000000000000000"
 	}
 	return false

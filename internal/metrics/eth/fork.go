@@ -2,25 +2,25 @@ package eth
 
 import (
 	"container/list"
+	poller "github.com/IRT-SystemX/bcm-poller/poller"
 	"log"
-	ingest "github.com/IRT-SystemX/bcm-poller/ingest"
 	"reflect"
 )
 
 type EthBlockEvent interface {
-	ingest.BlockEvent
+	poller.BlockEvent
 	ParentHash() string
 	Hash() string
 	SetFork(bool)
 }
 
 type ForkWatcher struct {
-	connector   ingest.Connector
+	connector   poller.Connector
 	maxForkSize int
 	chain       *list.List
 }
 
-func NewForkWatcher(connector ingest.Connector, maxForkSize int) *ForkWatcher {
+func NewForkWatcher(connector poller.Connector, maxForkSize int) *ForkWatcher {
 	return &ForkWatcher{connector: connector, maxForkSize: maxForkSize, chain: list.New()}
 }
 

@@ -44,7 +44,7 @@ func NewEngine(syncMode string, syncThreadPool int, syncThreadSize int) *Engine 
 			"sync":      "0%%",
 			"current":   zero,
 		},
-		Queue:          make(chan BlockEvent),
+		Queue: make(chan BlockEvent),
 	}
 	return engine
 }

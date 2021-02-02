@@ -1,37 +1,37 @@
 package engine
 
 import (
-	ingest "github.com/IRT-SystemX/bcm-poller/ingest"
-	"github.com/hyperledger/fabric-sdk-go/pkg/core/config"
-	"github.com/hyperledger/fabric-sdk-go/pkg/gateway"
-	"github.com/hyperledger/fabric-sdk-go/pkg/fabsdk"
-    "github.com/hyperledger/fabric-sdk-go/pkg/client/ledger"
-    "reflect"
-	"log"
 	"encoding/hex"
-	"math/big"
-	"time"
-	"os"
-	"io/ioutil"
 	"encoding/json"
 	"errors"
+	poller "github.com/IRT-SystemX/bcm-poller/poller"
+	"github.com/hyperledger/fabric-sdk-go/pkg/client/ledger"
+	"github.com/hyperledger/fabric-sdk-go/pkg/core/config"
+	"github.com/hyperledger/fabric-sdk-go/pkg/fabsdk"
+	"github.com/hyperledger/fabric-sdk-go/pkg/gateway"
+	"io/ioutil"
+	"log"
+	"math/big"
+	"os"
+	"reflect"
+	"time"
 )
 
 type HlfEngine struct {
-	*ingest.Engine
-	path           string
-	walletUser	   string
-	orgUser        string
-	network        *gateway.Network
-	client         *ledger.Client
+	*poller.Engine
+	path       string
+	walletUser string
+	orgUser    string
+	network    *gateway.Network
+	client     *ledger.Client
 }
 
-func NewHlfEngine(path string, walletUser string, orgUser string, syncMode string, syncThreadPool int, syncThreadSize int) *ingest.Engine {
+func NewHlfEngine(path string, walletUser string, orgUser string, syncMode string, syncThreadPool int, syncThreadSize int) *poller.Engine {
 	engine := &HlfEngine{
-		Engine: ingest.NewEngine(syncMode, syncThreadPool, syncThreadSize),
-		path: path,
+		Engine:     poller.NewEngine(syncMode, syncThreadPool, syncThreadSize),
+		path:       path,
 		walletUser: walletUser,
-		orgUser: orgUser,
+		orgUser:    orgUser,
 	}
 	engine.Engine.RawEngine = engine
 	return engine.Engine
@@ -51,7 +51,7 @@ func loadProfile(pathFile string) (map[string]interface{}, error) {
 		}
 		return raw, nil
 	} else {
-		return nil, errors.New("Error: connection profile not found ("+pathFile+")")
+		return nil, errors.New("Error: connection profile not found (" + pathFile + ")")
 	}
 }
 
@@ -116,7 +116,7 @@ func (engine *HlfEngine) Connect() {
 	}
 	contextOrg := fabsdk.WithOrg(orgName)
 	contextUser := fabsdk.WithUser(engine.orgUser)
-	client, err := ledger.New(sdk.ChannelContext(channelName, contextUser, contextOrg, ))
+	client, err := ledger.New(sdk.ChannelContext(channelName, contextUser, contextOrg))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -127,7 +127,7 @@ func (engine *HlfEngine) Connect() {
 	if err != nil {
 		log.Fatal(err)
 	}
-    wallet, err := gateway.NewFileSystemWallet(walletPath)
+	wallet, err := gateway.NewFileSystemWallet(walletPath)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -148,7 +148,7 @@ func (engine *HlfEngine) Connect() {
 		if err != nil {
 			time.Sleep(retry * time.Second)
 		} else {
-		    log.Printf("network ok")
+			log.Printf("network ok")
 			engine.network = network
 			break
 		}
@@ -160,13 +160,13 @@ func (engine *HlfEngine) Latest() (*big.Int, error) {
 	if err != nil {
 		return nil, err
 	} else {
-    	return big.NewInt(int64(info.BCI.Height)-1), nil
+		return big.NewInt(int64(info.BCI.Height) - 1), nil
 	}
 }
 
-func (engine *HlfEngine) Process(number *big.Int, listening bool) ingest.BlockEvent {
+func (engine *HlfEngine) Process(number *big.Int, listening bool) poller.BlockEvent {
 	block, err := engine.client.QueryBlock(number.Uint64())
- 	if err != nil {
+	if err != nil {
 		log.Println("Error block: ", err)
 		return nil
 	}
@@ -175,12 +175,12 @@ func (engine *HlfEngine) Process(number *big.Int, listening bool) ingest.BlockEv
 	if engine.Processor != nil && !reflect.ValueOf(engine.Processor).IsNil() {
 		engine.Processor.Process(block, event, listening)
 	}
-    return event
+	return event
 }
 
 func (engine *HlfEngine) Listen() {
 	reg, notifier, err := engine.network.RegisterFilteredBlockEvent()
- 	if err != nil {
+	if err != nil {
 		log.Fatalln("Failed to register filtered block event: %s", err)
 	}
 	defer engine.network.Unregister(reg)

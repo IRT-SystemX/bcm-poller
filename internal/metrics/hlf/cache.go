@@ -1,30 +1,30 @@
 package hlf
 
 import (
-	ingest "github.com/IRT-SystemX/bcm-poller/ingest"
-	utils "github.com/IRT-SystemX/bcm-poller/internal"
-	"math/big"
+	metrics "github.com/IRT-SystemX/bcm-poller/internal/metrics"
+	poller "github.com/IRT-SystemX/bcm-poller/poller"
 	"log"
+	"math/big"
 )
 
 type Tracking struct {
-	Events   []*utils.Event   `json:"events"`
+	Events []*metrics.Event `json:"events"`
 }
 
 type Cache struct {
-	*utils.RawCache
+	*metrics.RawCache
 	Tracking *Tracking
-	ingest.Connector
+	poller.Connector
 }
 
 func NewCache(configFile string, backupFile string, restore bool, backupFrequency int64) *Cache {
 	cache := &Cache{
-		RawCache: utils.NewRawCache(configFile, backupFile, restore, backupFrequency),
+		RawCache: metrics.NewRawCache(configFile, backupFile, restore, backupFrequency),
 		Tracking: parseConfig(configFile),
 	}
 	raw := cache.LoadBackup()
 	if raw != nil {
-		utils.UnmarshalTrackingEvents(raw["tracking"].(map[interface{}]interface{})["events"].([]interface{}), cache.Tracking.Events)
+		metrics.UnmarshalTrackingEvents(raw["tracking"].(map[interface{}]interface{})["events"].([]interface{}), cache.Tracking.Events)
 	}
 	return cache
 }
@@ -75,25 +75,24 @@ func (cache *Cache) Revert(event interface{}) {
 }
 
 func parseConfig(config string) *Tracking {
-	tracking := &Tracking{Events: make([]*utils.Event, 0)}
-	raw := utils.LoadConfig(config)
+	tracking := &Tracking{Events: make([]*metrics.Event, 0)}
+	raw := metrics.LoadConfig(config)
 	if raw != nil {
-		events := utils.UnmarshalEvents(raw, "events")
+		events := metrics.UnmarshalEvents(raw, "events")
 		for key, value := range events {
-			tracking.Events = append(tracking.Events, utils.NewEvent(key, value))
+			tracking.Events = append(tracking.Events, metrics.NewEvent(key, value))
 		}
 	}
 	return tracking
 }
 
-func (*Cache) check(rule *utils.EventRule, obj interface{}) bool {
+func (*Cache) check(rule *metrics.EventRule, obj interface{}) bool {
 	tx := obj.(*TxEvent)
 	switch rule.Field {
-	case utils.TO:
+	case metrics.TO:
 		return rule.Value == tx.Chaincode
-	case utils.METHOD:
+	case metrics.METHOD:
 		return rule.Value == tx.Method
 	}
 	return false
 }
-

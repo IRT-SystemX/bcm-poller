@@ -1,19 +1,23 @@
 package main
 
 import (
-	model "github.com/IRT-SystemX/bcm-poller/ingest"
-	ingest "github.com/IRT-SystemX/bcm-poller/ingest/engine"
-	eth "github.com/IRT-SystemX/bcm-poller/internal/eth"
-	hlf "github.com/IRT-SystemX/bcm-poller/internal/hlf"
+	eth "github.com/IRT-SystemX/bcm-poller/internal/metrics/eth"
+	hlf "github.com/IRT-SystemX/bcm-poller/internal/metrics/hlf"
+	model "github.com/IRT-SystemX/bcm-poller/poller"
+	poller "github.com/IRT-SystemX/bcm-poller/poller/engine"
 	utils "github.com/IRT-SystemX/bcm-poller/utils"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"log"
+	"net/http"
+	"os"
 )
 
 const (
-	refresh         uint64 = 10
-	maxForkSize     int    = 10
+	refresh     uint64 = 10
+	maxForkSize int    = 10
 )
 
 var (
@@ -32,45 +36,39 @@ var (
 	syncThreadPool  int    = 4
 	syncThreadSize  int    = 25
 	ledgerPath      string = "/chain"
+	apiUrl          string = "http://localhost:8545"
+	metrics         bool   = false
 )
 
 func runEth(cmd *cobra.Command, args []string) {
-	engine := ingest.NewEthEngine(viper.GetString("url"), viper.GetString("syncMode"), viper.GetInt("syncThreadPool"), viper.GetInt("syncThreadSize"))
+	engine := poller.NewEthEngine(viper.GetString("url"), viper.GetString("syncMode"), viper.GetInt("syncThreadPool"), viper.GetInt("syncThreadSize"))
 
 	log.Printf("Poller is connecting to " + viper.GetString("url"))
-	client := interface{}(engine.RawEngine).(*ingest.EthEngine).Connect()
+	client := interface{}(engine.RawEngine).(*poller.EthEngine).Connect()
 	log.Printf("Poller is connected to  " + viper.GetString("url"))
-	
-	cache := eth.NewCache(client, viper.GetString("config"), viper.GetString("backupPath"), viper.GetBool("restore"), int64(viper.GetInt("backup")))
+
+	cache := eth.NewExporterCache(client, utils.NewFetcher(viper.GetString("api")), viper.GetString("config"), viper.GetString("backupPath"), viper.GetBool("restore"), int64(viper.GetInt("backup")))
 	fork := eth.NewForkWatcher(interface{}(cache).(model.Connector), maxForkSize)
 	processor := eth.NewProcessor(client, fork)
-	
+
 	initEngine(viper.GetString("start"), cache.Stats["block"].Count, viper.GetString("end"), engine, interface{}(cache).(model.Connector), interface{}(processor).(model.Processor))
-	bind := map[string]interface{}{
-		"stats":    cache.Stats,
-		"tracking": cache.Tracking,
-		"status":   engine.Status(),
-	}
-	run(viper.GetString("port"), viper.GetString("ledgerPath"), engine, interface{}(cache).(model.Connector), bind)
+
+	run(viper.GetString("port"), viper.GetString("ledgerPath"), engine, interface{}(cache).(model.Connector), map[string]interface{}{"stats": cache.Stats, "tracking": cache.Tracking, "status": engine.Status()})
 }
 
 func runHlf(cmd *cobra.Command, args []string) {
-	engine := ingest.NewHlfEngine(viper.GetString("path"), viper.GetString("walletUser"), viper.GetString("orgUser"), viper.GetString("syncMode"), viper.GetInt("syncThreadPool"), viper.GetInt("syncThreadSize"))
+	engine := poller.NewHlfEngine(viper.GetString("path"), viper.GetString("walletUser"), viper.GetString("orgUser"), viper.GetString("syncMode"), viper.GetInt("syncThreadPool"), viper.GetInt("syncThreadSize"))
 
 	log.Printf("Poller is connecting")
-	interface{}(engine.RawEngine).(*ingest.HlfEngine).Connect()
+	interface{}(engine.RawEngine).(*poller.HlfEngine).Connect()
 	log.Printf("Poller is connected")
 
 	cache := hlf.NewCache(viper.GetString("config"), viper.GetString("backupPath"), viper.GetBool("restore"), int64(viper.GetInt("backup")))
 	processor := hlf.NewProcessor()
 
 	initEngine(viper.GetString("start"), cache.Stats["block"].Count, viper.GetString("end"), engine, interface{}(cache).(model.Connector), interface{}(processor).(model.Processor))
-	bind := map[string]interface{}{
-		"stats":    cache.Stats,
-		"tracking": cache.Tracking,
-		"status":   engine.Status(),
-	}
-	run(viper.GetString("port"), viper.GetString("ledgerPath"), engine, interface{}(cache).(model.Connector), bind)
+
+	run(viper.GetString("port"), viper.GetString("ledgerPath"), engine, interface{}(cache).(model.Connector), map[string]interface{}{"stats": cache.Stats, "tracking": cache.Tracking, "status": engine.Status()})
 }
 
 func initEngine(start string, defaultStart string, end string, engine *model.Engine, cache model.Connector, processor model.Processor) {
@@ -103,6 +101,11 @@ func run(port string, ledgerPath string, engine *model.Engine, cache model.Conne
 	}()
 	server := utils.NewServer(port)
 	server.Bind(bind)
+	if viper.GetBool("metrics") {
+		registry := prometheus.NewPedanticRegistry()
+		registry.MustRegister(interface{}(cache).(prometheus.Collector))
+		http.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{ErrorLog: log.New(os.Stderr, log.Prefix(), log.Flags()), ErrorHandling: promhttp.ContinueOnError}))
+	}
 	server.Start()
 }
 
@@ -138,14 +141,18 @@ func main() {
 		viper.AutomaticEnv()
 	})
 	var ethCmd = &cobra.Command{
-		Use:   "eth",
-		Run:   runEth,
+		Use: "eth",
+		Run: runEth,
 	}
 	ethCmd.Flags().String("url", ethUrl, "Url socket web3")
+	ethCmd.Flags().String("api", apiUrl, "Url http web3")
+	ethCmd.Flags().Bool("metrics", metrics, "Expose open metrics")
 	viper.BindPFlag("url", ethCmd.Flags().Lookup("url"))
+	viper.BindPFlag("api", ethCmd.Flags().Lookup("api"))
+	viper.BindPFlag("metrics", ethCmd.Flags().Lookup("metrics"))
 	var hlfCmd = &cobra.Command{
-		Use:   "hlf",
-		Run:   runHlf,
+		Use: "hlf",
+		Run: runHlf,
 	}
 	hlfCmd.Flags().String("path", hlfPath, "Path hlf files")
 	hlfCmd.Flags().String("walletUser", walletUser, "Wallet user hlf")

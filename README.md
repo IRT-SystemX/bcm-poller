@@ -41,8 +41,10 @@ Usage:
 
 Flags:
   -h, --help                 help for poller
-      --url string           Address web3 (default "ws://localhost:8546")
       --config string        Config file (default "config.yml")
+      --url string           Url socket web3 (default "ws://localhost:8546")
+      --api string           Url http web3 (default "http://localhost:8545")
+      --metrics              Expose open metrics
       --port int             Port to run server on (default 8000)
       --restore              Restore counters from the backup
       --backup int           Backup frequency in number of blocks (default 0, no backup)
@@ -245,7 +247,12 @@ It uses hyperledger fabric files to connect a gateway and collect the metrics.
 docker build --target install -t bcm-poller $PWD
 ```
 
-* Run and connect to node
+* Run and connect to Hyperledger Fabric network
+```
+docker run -it --rm --name poller -p 8000:8000 -v $PWD:/backup bcm-poller hlf --path /tmp/hyperledger-fabric-network/settings/connection-org1.json --config /backup/config.yml
+```
+
+* Run and connect to Ethereum node
 ```
 docker run -it --rm --name poller -p 8000:8000 -v $PWD:/backup bcm-poller eth --url ws://node:8546 --config /backup/config.yml
 ```
@@ -255,12 +262,17 @@ docker run -it --rm --name poller -p 8000:8000 -v $PWD:/backup bcm-poller eth --
 curl -H "Content-Type: application/json" -XGET localhost:8000/status
 ```
 
+* Alternative: open metrics exporter for Ethereum
+```
+docker run -it --rm --name poller -p 8000:8000 -v $PWD:/backup bcm-poller eth --url ws://node:8546 --config /backup/config.yml --metrics --api http://node:8545
+```
+
 ## Development
 
 * Run go env
 
 ```
-docker run -it --rm --name dev -p 8000:8000 -v $PWD:/go/src -w /go/src golang:1.14 bash
-$ go run cmd/main.go eth
-$ go run cmd/main.go hlf
+docker run -it --rm --name dev -p 8000:8000 -v $PWD:/go/src -w /go/src golang:1.15 bash
+$ go run cmd/metrics/main.go hlf
+$ go run cmd/metrics/main.go eth
 ```

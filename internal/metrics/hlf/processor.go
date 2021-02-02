@@ -1,15 +1,15 @@
 package hlf
 
 import (
-	ingest "github.com/IRT-SystemX/bcm-poller/ingest"
-    "github.com/hyperledger/fabric-config/protolator"
-    "github.com/golang/protobuf/proto"
-	"github.com/tidwall/gjson"
-	b64 "encoding/base64"
 	"bytes"
-	"strconv"
+	b64 "encoding/base64"
+	poller "github.com/IRT-SystemX/bcm-poller/poller"
+	"github.com/golang/protobuf/proto"
+	"github.com/hyperledger/fabric-config/protolator"
+	"github.com/tidwall/gjson"
 	"log"
 	"math/big"
+	"strconv"
 	"time"
 )
 
@@ -20,7 +20,7 @@ type BlockCacheEvent struct {
 	Interval     uint64
 	timestamp    uint64
 	Transactions []*TxEvent
-	ingest.BlockEvent
+	poller.BlockEvent
 }
 
 func (blockEvent *BlockCacheEvent) Number() *big.Int {
@@ -40,11 +40,11 @@ func (blockEvent *BlockCacheEvent) Timestamp() uint64 {
 }
 
 type TxEvent struct {
-	id			string
-	creator     string
-	Timestamp   uint64
-	Chaincode   string
-	Method      string
+	id        string
+	creator   string
+	Timestamp uint64
+	Chaincode string
+	Method    string
 }
 
 type Processor struct {
@@ -55,27 +55,27 @@ func NewProcessor() *Processor {
 	return processor
 }
 
-func (processor *Processor) NewBlockEvent(number *big.Int, parentHash string, hash string) ingest.BlockEvent {
+func (processor *Processor) NewBlockEvent(number *big.Int, parentHash string, hash string) poller.BlockEvent {
 	blockEvent := &BlockCacheEvent{
 		number:     number,
 		parentHash: parentHash,
 		hash:       hash,
 	}
-	return interface{}(blockEvent).(ingest.BlockEvent)
+	return interface{}(blockEvent).(poller.BlockEvent)
 }
 
-func (processor *Processor) Process(obj interface{}, event ingest.BlockEvent, listening bool) {
+func (processor *Processor) Process(obj interface{}, event poller.BlockEvent, listening bool) {
 	var buf bytes.Buffer
 	err := protolator.DeepMarshalJSON(&buf, obj.(proto.Message))
 	if err != nil {
-        log.Fatalln("DeepMarshalJSON error:", err)
-    }
+		log.Fatalln("DeepMarshalJSON error:", err)
+	}
 	blockEvent := interface{}(event).(*BlockCacheEvent)
 	txs := gjson.Get(buf.String(), "data.data").Array()
 	blockEvent.Transactions = make([]*TxEvent, len(txs))
 	blockEvent.timestamp = 0
 	for i, _ := range txs {
-		prefix := "data.data."+strconv.Itoa(i)
+		prefix := "data.data." + strconv.Itoa(i)
 		id := gjson.Get(buf.String(), prefix+".payload.header.channel_header.tx_id").String()
 		creator := gjson.Get(buf.String(), prefix+".payload.header.channel_header.creator").String()
 		timestampStr := gjson.Get(buf.String(), prefix+".payload.header.channel_header.timestamp").String()
@@ -84,8 +84,8 @@ func (processor *Processor) Process(obj interface{}, event ingest.BlockEvent, li
 		timestamp, err := time.Parse("2006-01-02T15:04:05Z", timestampStr)
 		if err != nil {
 			log.Fatal(err)
-	    }
-		txEvent := &TxEvent{id: id, creator: creator, Timestamp: uint64(timestamp.Unix()), Chaincode: name, }
+		}
+		txEvent := &TxEvent{id: id, creator: creator, Timestamp: uint64(timestamp.Unix()), Chaincode: name}
 		for _, val := range args {
 			value, err := b64.StdEncoding.DecodeString(val.String())
 			if err != nil {
@@ -98,7 +98,7 @@ func (processor *Processor) Process(obj interface{}, event ingest.BlockEvent, li
 		log.Printf("Process tx %s > %s_%s", txEvent.id, txEvent.Chaincode, txEvent.Method)
 		blockEvent.Transactions[i] = txEvent
 		if blockEvent.timestamp == 0 {
-	   		blockEvent.timestamp = txEvent.Timestamp
-	    }
+			blockEvent.timestamp = txEvent.Timestamp
+		}
 	}
 }

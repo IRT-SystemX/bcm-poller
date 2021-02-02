@@ -9,9 +9,9 @@ type BlockEvent interface {
 }
 
 type RawEngine interface {
-    Latest() (*big.Int, error)
-    Process(number *big.Int, listening bool) BlockEvent
-    Listen()
+	Latest() (*big.Int, error)
+	Process(number *big.Int, listening bool) BlockEvent
+	Listen()
 }
 
 type Connector interface {

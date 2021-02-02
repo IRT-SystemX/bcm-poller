@@ -1,4 +1,4 @@
-package utils
+package metrics
 
 import (
 	"encoding/json"
@@ -13,7 +13,7 @@ import (
 
 var (
 	zero = big.NewInt(0)
-	one = big.NewInt(1)
+	one  = big.NewInt(1)
 )
 
 type Stats struct {
@@ -61,7 +61,7 @@ type Event struct {
 }
 
 func (event *Event) Rules() []*EventRule {
-    return event.rules
+	return event.rules
 }
 
 func NewEvent(key string, rules []*EventRule) *Event {
@@ -208,7 +208,7 @@ type RawCache struct {
 	backupFile      string
 	backupFrequency *big.Int
 	Stats           map[string]*Stats
-	Backup			map[string]interface{}
+	Backup          map[string]interface{}
 }
 
 func NewRawCache(configFile string, backupFile string, restore bool, backupFrequency int64) *RawCache {
@@ -263,4 +263,3 @@ func (cache *RawCache) Save() {
 		storeBackup(cache.backupFile, cache.Backup)
 	}
 }
-
