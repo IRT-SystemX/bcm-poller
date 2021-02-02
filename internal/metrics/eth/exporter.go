@@ -108,22 +108,18 @@ func (cache *ExporterCache) updateFromApi() {
 	if reflect.TypeOf(syncing).Name() == "bool" {
 		cache.set("eth_syncing", "sync", prometheus.GaugeValue, 1, map[string]interface{}{
 			"eth_sync_starting": nil,
-			"eth_sync_current":  nil,
 			"eth_sync_highest":  nil,
 		})
 	} else {
 		syncingMap := syncing.(map[string]interface{})
 		cache.set("eth_syncing", "sync", prometheus.GaugeValue, utils.StringToFloat(utils.Decode(syncingMap["currentBlock"].(string)).String()), map[string]interface{}{
 			"eth_sync_starting": syncingMap["startingBlock"].(string),
-			"eth_sync_current":  syncingMap["currentBlock"].(string),
 			"eth_sync_highest":  syncingMap["highestBlock"].(string),
 		})
 	}
 	peers := cache.fetcher.Get("parity_netPeers").(map[string]interface{})
 	cache.set("parity_node_peers", "peers", prometheus.GaugeValue, peers["connected"].(float64), map[string]interface{}{
-		"peers_connected": utils.FloatToString(peers["connected"].(float64)),
 		"peers_max":       utils.FloatToString(peers["max"].(float64)),
-		"peers_usage":     utils.Percent(peers["active"].(float64), peers["max"].(float64)),
 	})
 }
 

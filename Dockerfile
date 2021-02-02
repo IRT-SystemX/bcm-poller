@@ -21,7 +21,7 @@ FROM go_builder as go_build
 
 COPY . /go/src
 
-RUN GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go install cmd/main.go
+RUN GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go install cmd/metrics/main.go
 
 ########################################
 
